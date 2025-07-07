@@ -4,27 +4,44 @@ import { INPUT_SAMPLE_RATE } from "./constants";
 
 import WORKLET from "./play-worklet.js";
 
+// Type definitions
+interface Voice {
+  name: string;
+  language: string;
+  gender: string;
+}
+
+interface WorkerMessage {
+  type: string;
+  status?: string;
+  voices?: Record<string, Voice>;
+  result?: {
+    audio: Float32Array;
+  };
+  error?: Error;
+}
+
 export default function App() {
-  const [callStartTime, setCallStartTime] = useState(null);
+  const [callStartTime, setCallStartTime] = useState<number | null>(null);
   const [callStarted, setCallStarted] = useState(false);
   const [playing, setPlaying] = useState(false);
 
   const [voice, setVoice] = useState("af_heart");
-  const [voices, setVoices] = useState([]);
+  const [voices, setVoices] = useState<Record<string, Voice>>({});
 
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [listeningScale, setListeningScale] = useState(1);
   const [speakingScale, setSpeakingScale] = useState(1);
-  const [ripples, setRipples] = useState([]);
+  const [ripples, setRipples] = useState<number[]>([]);
 
   const [ready, setReady] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [elapsedTime, setElapsedTime] = useState("00:00");
-  const worker = useRef(null);
+  const worker = useRef<Worker | null>(null);
 
-  const micStreamRef = useRef(null);
-  const node = useRef(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const node = useRef<AudioWorkletNode | null>(null);
 
   useEffect(() => {
     worker.current?.postMessage({
@@ -61,9 +78,9 @@ export default function App() {
       type: "module",
     });
 
-    const onMessage = ({ data }) => {
+    const onMessage = ({ data }: { data: WorkerMessage }) => {
       if (data.error) {
-        return onError(data.error);
+        return setError(data.error.message);
       }
 
       switch (data.type) {
@@ -74,7 +91,7 @@ export default function App() {
           } else if (data.status === "recording_end") {
             setIsListening(false);
           } else if (data.status === "ready") {
-            setVoices(data.voices);
+            setVoices(data.voices || {});
             setReady(true);
           }
           break;
@@ -82,7 +99,7 @@ export default function App() {
           console.log('input', data)
           break;
         case "output":
-          if (!playing) {
+          if (!playing && data.result?.audio) {
             node.current?.port.postMessage(data.result.audio);
             setPlaying(true);
             setIsSpeaking(true);
@@ -91,26 +108,26 @@ export default function App() {
           break;
       }
     };
-    const onError = (err) => setError(err.message);
+    const onError = (ev: ErrorEvent) => setError(ev.message);
 
     worker.current.addEventListener("message", onMessage);
     worker.current.addEventListener("error", onError);
 
     return () => {
-      worker.current.removeEventListener("message", onMessage);
-      worker.current.removeEventListener("error", onError);
+      worker.current?.removeEventListener("message", onMessage);
+      worker.current?.removeEventListener("error", onError);
     };
   }, []);
 
   useEffect(() => {
     if (!callStarted) return;
 
-    let worklet;
-    let inputAudioContext;
-    let source;
+    let worklet: AudioWorkletNode | undefined;
+    let inputAudioContext: AudioContext | undefined;
+    let source: MediaStreamAudioSourceNode | undefined;
     let ignore = false;
 
-    let outputAudioContext;
+    let outputAudioContext: AudioContext | undefined;
     const audioStreamPromise = Promise.resolve(micStreamRef.current);
 
     audioStreamPromise
@@ -118,18 +135,18 @@ export default function App() {
         if (ignore) return;
 
         inputAudioContext = new (window.AudioContext ||
-          window.webkitAudioContext)({
+          (window as any).webkitAudioContext)({
           sampleRate: INPUT_SAMPLE_RATE,
         });
 
         const analyser = inputAudioContext.createAnalyser();
         analyser.fftSize = 256;
-        source = inputAudioContext.createMediaStreamSource(stream);
+        source = inputAudioContext.createMediaStreamSource(stream!);
         source.connect(analyser);
 
         const inputDataArray = new Uint8Array(analyser.frequencyBinCount);
 
-        function calculateRMS(array) {
+        function calculateRMS(array: Uint8Array) {
           let sum = 0;
           for (let i = 0; i < array.length; ++i) {
             const normalized = array[i] / 128 - 1;
@@ -151,7 +168,7 @@ export default function App() {
         });
 
         source.connect(worklet);
-        worklet.port.onmessage = (event) => {
+        worklet.port.onmessage = (event: MessageEvent) => {
           const { buffer } = event.data;
           worker.current?.postMessage({ type: "audio", buffer });
         };
@@ -173,7 +190,7 @@ export default function App() {
           "buffered-audio-worklet-processor",
         );
 
-        node.current.port.onmessage = (event) => {
+        node.current.port.onmessage = (event: MessageEvent) => {
           if (event.data.type === "playback_ended") {
             setPlaying(false);
             setIsSpeaking(false);
@@ -213,7 +230,7 @@ export default function App() {
 
     return () => {
       ignore = true;
-      audioStreamPromise.then((s) => s.getTracks().forEach((t) => t.stop()));
+      audioStreamPromise.then((s) => s?.getTracks().forEach((t) => t.stop()));
       source?.disconnect();
       worklet?.disconnect();
       inputAudioContext?.close();
@@ -251,7 +268,7 @@ export default function App() {
       setCallStarted(true);
       worker.current?.postMessage({ type: "start_call" });
     } catch (err) {
-      setError(err.message);
+      setError(err instanceof Error ? err.message : String(err));
       console.error(err);
     }
   };
@@ -283,7 +300,7 @@ export default function App() {
               className="absolute inset-0 opacity-0 cursor-pointer"
               disabled={!ready}
             >
-              {Object.entries(voices).map(([key, v]) => (
+              {Object.entries(voices).map(([key, v]: [string, Voice]) => (
                 <option key={key} value={key}>
                   {`${v.name} (${
                     v.language === "en-us" ? "American" : v.language

@@ -1,12 +1,16 @@
 export default () => {
   class BufferedAudioWorkletProcessor extends AudioWorkletProcessor {
+    private bufferQueue: Float32Array[];
+    private currentChunkOffset: number;
+    private hadData: boolean;
+
     constructor() {
       super();
       this.bufferQueue = [];
       this.currentChunkOffset = 0;
       this.hadData = false;
 
-      this.port.onmessage = (event) => {
+      this.port.onmessage = (event: MessageEvent) => {
         const data = event.data;
         if (data instanceof Float32Array) {
           this.hadData = true;
@@ -18,7 +22,7 @@ export default () => {
       };
     }
 
-    process(inputs, outputs) {
+    process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
       const channel = outputs[0][0];
       if (!channel) return true;
 

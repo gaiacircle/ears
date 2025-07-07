@@ -13,6 +13,7 @@ import {
   pipeline,
 } from "@huggingface/transformers";
 
+// @ts-ignore - Module resolution issue with kokoro-js
 import { KokoroTTS, TextSplitterStream } from "kokoro-js";
 
 import {
@@ -26,332 +27,360 @@ import {
   MIN_SPEECH_DURATION_SAMPLES,
 } from "./constants";
 
-const model_id = "onnx-community/Kokoro-82M-v1.0-ONNX";
-let voice;
-const tts = await KokoroTTS.from_pretrained(model_id, {
-  dtype: "fp32",
-  device: "webgpu",
-});
-
-const device = "webgpu";
-self.postMessage({ type: "info", message: `Using device: "${device}"` });
-self.postMessage({
-  type: "info",
-  message: "Loading models...",
-  duration: "until_next",
-});
-
-// Load models
-const silero_vad = await AutoModel.from_pretrained(
-  "onnx-community/silero-vad",
-  {
-    config: { model_type: "custom" },
-    dtype: "fp32", // Full-precision
-  },
-).catch((error) => {
-  self.postMessage({ error });
-  throw error;
-});
-
-const DEVICE_DTYPE_CONFIGS = {
-  webgpu: {
-    encoder_model: "fp32",
-    decoder_model_merged: "fp32",
-  },
-  wasm: {
-    encoder_model: "fp32",
-    decoder_model_merged: "q8",
-  },
-};
-const transcriber = await pipeline(
-  "automatic-speech-recognition",
-  "onnx-community/whisper-base", // or "onnx-community/moonshine-base-ONNX",
-  {
-    device,
-    dtype: DEVICE_DTYPE_CONFIGS[device],
-  },
-).catch((error) => {
-  self.postMessage({ error });
-  throw error;
-});
-
-await transcriber(new Float32Array(INPUT_SAMPLE_RATE)); // Compile shaders
-
-const llm_model_id = "HuggingFaceTB/SmolLM2-1.7B-Instruct";
-const tokenizer = await AutoTokenizer.from_pretrained(llm_model_id);
-const llm = await AutoModelForCausalLM.from_pretrained(llm_model_id, {
-  dtype: "q4f16",
-  device: "webgpu",
-});
-
-const SYSTEM_MESSAGE = {
-  role: "system",
-  content:
-    "You're a helpful and conversational voice assistant. Keep your responses short, clear, and casual.",
-};
-await llm.generate({ ...tokenizer("x"), max_new_tokens: 1 }); // Compile shaders
-
-let messages = [SYSTEM_MESSAGE];
-let past_key_values_cache;
-let stopping_criteria;
-self.postMessage({
-  type: "status",
-  status: "ready",
-  message: "Ready!",
-  voices: tts.voices,
-});
-
-// Global audio buffer to store incoming audio
-const BUFFER = new Float32Array(MAX_BUFFER_DURATION * INPUT_SAMPLE_RATE);
-let bufferPointer = 0;
-
-// Initial state for VAD
-const sr = new Tensor("int64", [INPUT_SAMPLE_RATE], []);
-let state = new Tensor("float32", new Float32Array(2 * 1 * 128), [2, 1, 128]);
-
-// Whether we are in the process of adding audio to the buffer
-let isRecording = false;
-let isPlaying = false; // new flag
-
-/**
- * Perform Voice Activity Detection (VAD)
- * @param {Float32Array} buffer The new audio buffer
- * @returns {Promise<boolean>} `true` if the buffer is speech, `false` otherwise.
- */
-async function vad(buffer) {
-  const input = new Tensor("float32", buffer, [1, buffer.length]);
-
-  const { stateN, output } = await silero_vad({ input, sr, state });
-  state = stateN; // Update state
-
-  const isSpeech = output.data[0];
-
-  // Use heuristics to determine if the buffer is speech or not
-  return (
-    // Case 1: We are above the threshold (definitely speech)
-    isSpeech > SPEECH_THRESHOLD ||
-    // Case 2: We are in the process of recording, and the probability is above the negative (exit) threshold
-    (isRecording && isSpeech >= EXIT_THRESHOLD)
-  );
-}
-
-/**
- * Transcribe the audio buffer
- * @param {Float32Array} buffer The audio buffer
- * @param {Object} data Additional data
- */
-const speechToSpeech = async (buffer, data) => {
-  isPlaying = true;
-
-  // 1. Transcribe the audio from the user
-  const text = await transcriber(buffer).then(({ text }) => text.trim());
-  if (["", "[BLANK_AUDIO]"].includes(text)) {
-    // If the transcription is empty or a blank audio, we skip the rest of the processing
-    return;
-  }
-  messages.push({ role: "user", content: text });
-  
-  self.postMessage({ type: "input", text });
-
-  // Set up text-to-speech streaming
-  const splitter = new TextSplitterStream();
-  const stream = tts.stream(splitter, {
-    voice,
-  });
-  (async () => {
-    for await (const { text, phonemes, audio } of stream) {
-      self.postMessage({ type: "output", text, result: audio });
-    }
-  })();
-
-  // 2. Generate a response using the LLM
-  const inputs = tokenizer.apply_chat_template(messages, {
-    add_generation_prompt: true,
-    return_dict: true,
-  });
-  const streamer = new TextStreamer(tokenizer, {
-    skip_prompt: true,
-    skip_special_tokens: true,
-    callback_function: (text) => {
-      splitter.push(text);
-    },
-    token_callback_function: () => {},
+(async (): Promise<void> => {
+  const model_id = "onnx-community/Kokoro-82M-v1.0-ONNX";
+  type VoiceKey = keyof typeof tts.voices;
+  let voice: VoiceKey | undefined;
+  const tts = await KokoroTTS.from_pretrained(model_id, {
+    dtype: "fp32",
+    device: "webgpu",
   });
 
-  stopping_criteria = new InterruptableStoppingCriteria();
-  const { past_key_values, sequences } = await llm.generate({
-    ...inputs,
-    past_key_values: past_key_values_cache,
-
-    do_sample: false, // TODO: do_sample: true is bugged (invalid data location on topk sample)
-    max_new_tokens: 1024,
-    streamer,
-    stopping_criteria,
-    return_dict_in_generate: true,
-  });
-  past_key_values_cache = past_key_values;
-
-  // Finally, close the stream to signal that no more text will be added.
-  splitter.close();
-
-  const decoded = tokenizer.batch_decode(
-    sequences.slice(null, [inputs.input_ids.dims[1], null]),
-    { skip_special_tokens: true },
-  );
-
-  messages.push({ role: "assistant", content: decoded[0] });
-};
-
-// Track the number of samples after the last speech chunk
-let postSpeechSamples = 0;
-const resetAfterRecording = (offset = 0) => {
+  const device = "webgpu" as const;
+  self.postMessage({ type: "info", message: `Using device: "${device}"` });
   self.postMessage({
-    type: "status",
-    status: "recording_end",
-    message: "Transcribing...",
+    type: "info",
+    message: "Loading models...",
     duration: "until_next",
   });
-  BUFFER.fill(0, offset);
-  bufferPointer = offset;
-  isRecording = false;
-  postSpeechSamples = 0;
-};
 
-const dispatchForTranscriptionAndResetAudioBuffer = (overflow) => {
-  // Get start and end time of the speech segment, minus the padding
-  const now = Date.now();
-  const end =
-    now - ((postSpeechSamples + SPEECH_PAD_SAMPLES) / INPUT_SAMPLE_RATE) * 1000;
-  const start = end - (bufferPointer / INPUT_SAMPLE_RATE) * 1000;
-  const duration = end - start;
-  const overflowLength = overflow?.length ?? 0;
+  // Load models
+  const silero_vad = await AutoModel.from_pretrained(
+    "onnx-community/silero-vad",
+    {
+      config: { model_type: "custom" } as any,
+      dtype: "fp32", // Full-precision
+    }
+  ).catch((error) => {
+    self.postMessage({ error });
+    throw error;
+  });
 
-  // Send the audio buffer to the worker
-  const buffer = BUFFER.slice(0, bufferPointer + SPEECH_PAD_SAMPLES);
+  type DtypeConfig =
+    | "auto"
+    | "fp32"
+    | "fp16"
+    | "q8"
+    | "int8"
+    | "uint8"
+    | "q4"
+    | "bnb4"
+    | "q4f16";
 
-  const prevLength = prevBuffers.reduce((acc, b) => acc + b.length, 0);
-  const paddedBuffer = new Float32Array(prevLength + buffer.length);
-  let offset = 0;
-  for (const prev of prevBuffers) {
-    paddedBuffer.set(prev, offset);
-    offset += prev.length;
+  const DEVICE_DTYPE_CONFIGS: Record<
+    string,
+    { encoder_model: DtypeConfig; decoder_model_merged: DtypeConfig }
+  > = {
+    webgpu: {
+      encoder_model: "fp32",
+      decoder_model_merged: "fp32",
+    },
+    wasm: {
+      encoder_model: "fp32",
+      decoder_model_merged: "q8",
+    },
+  };
+  const transcriber = await pipeline(
+    "automatic-speech-recognition",
+    "onnx-community/whisper-base", // or "onnx-community/moonshine-base-ONNX",
+    {
+      device,
+      dtype: DEVICE_DTYPE_CONFIGS[device as keyof typeof DEVICE_DTYPE_CONFIGS],
+    }
+  ).catch((error) => {
+    self.postMessage({ error });
+    throw error;
+  });
+
+  await transcriber(new Float32Array(INPUT_SAMPLE_RATE)); // Compile shaders
+
+  const llm_model_id = "HuggingFaceTB/SmolLM2-1.7B-Instruct";
+  const tokenizer = await AutoTokenizer.from_pretrained(llm_model_id);
+  const llm = await AutoModelForCausalLM.from_pretrained(llm_model_id, {
+    dtype: "q4f16",
+    device: "webgpu",
+  });
+
+  const SYSTEM_MESSAGE = {
+    role: "system",
+    content:
+      "You're a helpful and conversational voice assistant. Keep your responses short, clear, and casual.",
+  };
+  await llm.generate({ ...tokenizer("x"), max_new_tokens: 1 }); // Compile shaders
+
+  let messages: Array<{ role: string; content: string }> = [SYSTEM_MESSAGE];
+  let past_key_values_cache: any = null;
+  let stopping_criteria: InterruptableStoppingCriteria | undefined;
+  self.postMessage({
+    type: "status",
+    status: "ready",
+    message: "Ready!",
+    voices: tts.voices,
+  });
+
+  // Global audio buffer to store incoming audio
+  const BUFFER: Float32Array = new Float32Array(MAX_BUFFER_DURATION * INPUT_SAMPLE_RATE);
+  let bufferPointer: number = 0;
+
+  // Initial state for VAD
+  const sr: Tensor = new Tensor("int64", [INPUT_SAMPLE_RATE], []);
+  let state: Tensor = new Tensor("float32", new Float32Array(2 * 1 * 128), [2, 1, 128]);
+
+  // Whether we are in the process of adding audio to the buffer
+  let isRecording: boolean = false;
+  let isPlaying: boolean = false; // new flag
+
+  /**
+   * Perform Voice Activity Detection (VAD)
+   * @param {Float32Array} buffer The new audio buffer
+   * @returns {Promise<boolean>} `true` if the buffer is speech, `false` otherwise.
+   */
+  async function vad(buffer: Float32Array): Promise<boolean> {
+    const input = new Tensor("float32", buffer, [1, buffer.length]);
+
+    const { stateN, output } = await silero_vad({ input, sr, state });
+    state = stateN; // Update state
+
+    const isSpeech: number = output.data[0] as number;
+
+    // Use heuristics to determine if the buffer is speech or not
+    return (
+      // Case 1: We are above the threshold (definitely speech)
+      isSpeech > SPEECH_THRESHOLD ||
+      // Case 2: We are in the process of recording, and the probability is above the negative (exit) threshold
+      (isRecording && isSpeech >= EXIT_THRESHOLD)
+    );
   }
-  paddedBuffer.set(buffer, offset);
-  speechToSpeech(paddedBuffer, { start, end, duration });
 
-  // Set overflow (if present) and reset the rest of the audio buffer
-  if (overflow) {
-    BUFFER.set(overflow, 0);
-  }
-  resetAfterRecording(overflowLength);
-};
+  /**
+   * Transcribe the audio buffer
+   * @param {Float32Array} buffer The audio buffer
+   * @param {Object} data Additional data
+   */
+  const speechToSpeech = async (
+    buffer: Float32Array,
+    data: { start: number; end: number; duration: number }
+  ): Promise<void> => {
+    isPlaying = true;
 
-let prevBuffers = [];
-self.onmessage = async (event) => {
-  const { type, buffer } = event.data;
-
-  // refuse new audio while playing back
-  if (type === "audio" && isPlaying) return;
-
-  switch (type) {
-    case "start_call": {
-      const name = tts.voices[voice ?? "af_heart"]?.name ?? "Heart";
-      greet(`Hey there, my name is ${name}! How can I help you today?`);
+    // 1. Transcribe the audio from the user
+    const result = await transcriber(buffer);
+    const text: string = Array.isArray(result)
+      ? result[0]?.text?.trim() || ""
+      : (result as any)?.text?.trim() || "";
+    if (["", "[BLANK_AUDIO]"].includes(text)) {
+      // If the transcription is empty or a blank audio, we skip the rest of the processing
       return;
     }
-    case "end_call":
-      messages = [SYSTEM_MESSAGE];
-      past_key_values_cache = null;
-    case "interrupt":
-      stopping_criteria?.interrupt();
-      return;
-    case "set_voice":
-      voice = event.data.voice;
-      return;
-    case "playback_ended":
-      isPlaying = false;
-      return;
-  }
+    messages.push({ role: "user", content: text });
 
-  const wasRecording = isRecording; // Save current state
-  const isSpeech = await vad(buffer);
+    self.postMessage({ type: "input", text });
 
-  if (!wasRecording && !isSpeech) {
-    // We are not recording, and the buffer is not speech,
-    // so we will probably discard the buffer. So, we insert
-    // into a FIFO queue with maximum size of PREV_BUFFER_SIZE
-    if (prevBuffers.length >= MAX_NUM_PREV_BUFFERS) {
-      // If the queue is full, we discard the oldest buffer
-      prevBuffers.shift();
+    // Set up text-to-speech streaming
+    const splitter = new TextSplitterStream();
+    const stream = tts.stream(splitter, {
+      voice: voice as VoiceKey,
+    });
+    (async () => {
+      for await (const { text, phonemes, audio } of stream) {
+        self.postMessage({ type: "output", text, result: audio });
+      }
+    })();
+
+    // 2. Generate a response using the LLM
+    const inputs = tokenizer.apply_chat_template(messages, {
+      add_generation_prompt: true,
+      return_dict: true,
+    }) as any;
+    const streamer = new TextStreamer(tokenizer, {
+      skip_prompt: true,
+      skip_special_tokens: true,
+      callback_function: (text) => {
+        splitter.push(text);
+      },
+      token_callback_function: () => {},
+    });
+
+    stopping_criteria = new InterruptableStoppingCriteria();
+    const generateResult = (await llm.generate({
+      ...inputs,
+      past_key_values: past_key_values_cache,
+
+      do_sample: false, // TODO: do_sample: true is bugged (invalid data location on topk sample)
+      max_new_tokens: 1024,
+      streamer,
+      stopping_criteria,
+      return_dict_in_generate: true,
+    })) as any;
+    const { past_key_values, sequences } = generateResult;
+    past_key_values_cache = past_key_values;
+
+    // Finally, close the stream to signal that no more text will be added.
+    splitter.close();
+
+    const decoded = tokenizer.batch_decode(
+      sequences.slice(null, [(inputs as any).input_ids.dims[1], null]),
+      { skip_special_tokens: true }
+    );
+
+    messages.push({ role: "assistant", content: decoded[0] });
+  };
+
+  // Track the number of samples after the last speech chunk
+  let postSpeechSamples: number = 0;
+  const resetAfterRecording = (offset: number = 0): void => {
+    self.postMessage({
+      type: "status",
+      status: "recording_end",
+      message: "Transcribing...",
+      duration: "until_next",
+    });
+    BUFFER.fill(0, offset);
+    bufferPointer = offset;
+    isRecording = false;
+    postSpeechSamples = 0;
+  };
+
+  const dispatchForTranscriptionAndResetAudioBuffer = (
+    overflow?: Float32Array
+  ): void => {
+    // Get start and end time of the speech segment, minus the padding
+    const now: number = Date.now();
+    const end: number =
+      now -
+      ((postSpeechSamples + SPEECH_PAD_SAMPLES) / INPUT_SAMPLE_RATE) * 1000;
+    const start: number = end - (bufferPointer / INPUT_SAMPLE_RATE) * 1000;
+    const duration: number = end - start;
+    const overflowLength: number = overflow?.length ?? 0;
+
+    // Send the audio buffer to the worker
+    const buffer: Float32Array = BUFFER.slice(0, bufferPointer + SPEECH_PAD_SAMPLES);
+
+    const prevLength: number = prevBuffers.reduce((acc, b) => acc + b.length, 0);
+    const paddedBuffer: Float32Array = new Float32Array(prevLength + buffer.length);
+    let offset: number = 0;
+    for (const prev of prevBuffers) {
+      paddedBuffer.set(prev, offset);
+      offset += prev.length;
     }
-    prevBuffers.push(buffer);
-    return;
-  }
+    paddedBuffer.set(buffer, offset);
+    speechToSpeech(paddedBuffer, { start, end, duration });
 
-  const remaining = BUFFER.length - bufferPointer;
-  if (buffer.length >= remaining) {
-    // The buffer is larger than (or equal to) the remaining space in the global buffer,
-    // so we perform transcription and copy the overflow to the global buffer
-    BUFFER.set(buffer.subarray(0, remaining), bufferPointer);
-    bufferPointer += remaining;
-
-    // Dispatch the audio buffer
-    const overflow = buffer.subarray(remaining);
-    dispatchForTranscriptionAndResetAudioBuffer(overflow);
-    return;
-  } else {
-    // The buffer is smaller than the remaining space in the global buffer,
-    // so we copy it to the global buffer
-    BUFFER.set(buffer, bufferPointer);
-    bufferPointer += buffer.length;
-  }
-
-  if (isSpeech) {
-    if (!isRecording) {
-      // Indicate start of recording
-      self.postMessage({
-        type: "status",
-        status: "recording_start",
-        message: "Listening...",
-        duration: "until_next",
-      });
+    // Set overflow (if present) and reset the rest of the audio buffer
+    if (overflow) {
+      BUFFER.set(overflow, 0);
     }
-    // Start or continue recording
-    isRecording = true;
-    postSpeechSamples = 0; // Reset the post-speech samples
-    return;
-  }
+    resetAfterRecording(overflowLength);
+  };
 
-  postSpeechSamples += buffer.length;
+  let prevBuffers: Float32Array[] = [];
+  self.onmessage = async (event: MessageEvent): Promise<void> => {
+    const { type, buffer } = event.data;
 
-  // At this point we're confident that we were recording (wasRecording === true), but the latest buffer is not speech.
-  // So, we check whether we have reached the end of the current audio chunk.
-  if (postSpeechSamples < MIN_SILENCE_DURATION_SAMPLES) {
-    // There was a short pause, but not long enough to consider the end of a speech chunk
-    // (e.g., the speaker took a breath), so we continue recording
-    return;
-  }
+    // refuse new audio while playing back
+    if (type === "audio" && isPlaying) return;
 
-  if (bufferPointer < MIN_SPEECH_DURATION_SAMPLES) {
-    // The entire buffer (including the new chunk) is smaller than the minimum
-    // duration of a speech chunk, so we can safely discard the buffer.
-    resetAfterRecording();
-    return;
-  }
-
-  dispatchForTranscriptionAndResetAudioBuffer();
-};
-
-function greet(text) {
-  isPlaying = true;
-  const splitter = new TextSplitterStream();
-  const stream = tts.stream(splitter, { voice });
-  (async () => {
-    for await (const { text: chunkText, audio } of stream) {
-      self.postMessage({ type: "output", text: chunkText, result: audio });
+    switch (type) {
+      case "start_call": {
+        const voiceKey = (voice ?? "af_heart") as VoiceKey;
+        const name: string = tts.voices[voiceKey]?.name ?? "Heart";
+        greet(`Hey there, my name is ${name}! How can I help you today?`);
+        return;
+      }
+      case "end_call":
+        messages = [SYSTEM_MESSAGE];
+        past_key_values_cache = null;
+      case "interrupt":
+        stopping_criteria?.interrupt();
+        return;
+      case "set_voice":
+        voice = event.data.voice as VoiceKey;
+        return;
+      case "playback_ended":
+        isPlaying = false;
+        return;
     }
-  })();
-  splitter.push(text);
-  splitter.close();
-  messages.push({ role: "assistant", content: text });
-}
+
+    const wasRecording: boolean = isRecording; // Save current state
+    const isSpeech: boolean = await vad(buffer);
+
+    if (!wasRecording && !isSpeech) {
+      // We are not recording, and the buffer is not speech,
+      // so we will probably discard the buffer. So, we insert
+      // into a FIFO queue with maximum size of PREV_BUFFER_SIZE
+      if (prevBuffers.length >= MAX_NUM_PREV_BUFFERS) {
+        // If the queue is full, we discard the oldest buffer
+        prevBuffers.shift();
+      }
+      prevBuffers.push(buffer);
+      return;
+    }
+
+    const remaining: number = BUFFER.length - bufferPointer;
+    if (buffer.length >= remaining) {
+      // The buffer is larger than (or equal to) the remaining space in the global buffer,
+      // so we perform transcription and copy the overflow to the global buffer
+      BUFFER.set(buffer.subarray(0, remaining), bufferPointer);
+      bufferPointer += remaining;
+
+      // Dispatch the audio buffer
+      const overflow: Float32Array = buffer.subarray(remaining);
+      dispatchForTranscriptionAndResetAudioBuffer(overflow);
+      return;
+    } else {
+      // The buffer is smaller than the remaining space in the global buffer,
+      // so we copy it to the global buffer
+      BUFFER.set(buffer, bufferPointer);
+      bufferPointer += buffer.length;
+    }
+
+    if (isSpeech) {
+      if (!isRecording) {
+        // Indicate start of recording
+        self.postMessage({
+          type: "status",
+          status: "recording_start",
+          message: "Listening...",
+          duration: "until_next",
+        });
+      }
+      // Start or continue recording
+      isRecording = true;
+      postSpeechSamples = 0; // Reset the post-speech samples
+      return;
+    }
+
+    postSpeechSamples += buffer.length;
+
+    // At this point we're confident that we were recording (wasRecording === true), but the latest buffer is not speech.
+    // So, we check whether we have reached the end of the current audio chunk.
+    if (postSpeechSamples < MIN_SILENCE_DURATION_SAMPLES) {
+      // There was a short pause, but not long enough to consider the end of a speech chunk
+      // (e.g., the speaker took a breath), so we continue recording
+      return;
+    }
+
+    if (bufferPointer < MIN_SPEECH_DURATION_SAMPLES) {
+      // The entire buffer (including the new chunk) is smaller than the minimum
+      // duration of a speech chunk, so we can safely discard the buffer.
+      resetAfterRecording();
+      return;
+    }
+
+    dispatchForTranscriptionAndResetAudioBuffer();
+  };
+
+  function greet(text: string): void {
+    isPlaying = true;
+    const splitter = new TextSplitterStream();
+    const stream = tts.stream(splitter, { voice: voice as VoiceKey });
+    (async () => {
+      for await (const { text: chunkText, audio } of stream) {
+        self.postMessage({ type: "output", text: chunkText, result: audio });
+      }
+    })();
+    splitter.push(text);
+    splitter.close();
+    messages.push({ role: "assistant", content: text });
+  }
+})();

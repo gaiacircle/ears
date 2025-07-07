@@ -3,9 +3,13 @@ let globalPointer = 0;
 let globalBuffer = new Float32Array(MIN_CHUNK_SIZE);
 
 class VADProcessor extends AudioWorkletProcessor {
-  process(inputs, outputs, parameters) {
+  process(
+    inputs: Float32Array[][],
+    outputs: Float32Array[][],
+    parameters: Record<string, Float32Array>
+  ): boolean {
     const buffer = inputs[0][0];
-    if (!buffer) return; // buffer is null when the stream ends
+    if (!buffer) return true; // buffer is null when the stream ends
 
     if (buffer.length > MIN_CHUNK_SIZE) {
       // If the buffer is larger than the minimum chunk size, send the entire buffer
