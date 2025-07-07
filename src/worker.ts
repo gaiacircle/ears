@@ -28,16 +28,37 @@ import {
 } from "./constants";
 
 (async (): Promise<void> => {
+  // Detect available device with fallback
+  async function detectDevice(): Promise<"webgpu" | "wasm"> {
+    // Check if WebGPU is supported and functional
+    if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
+      try {
+        const gpu = (navigator as any).gpu;
+        const adapter = await gpu.requestAdapter();
+        if (adapter) {
+          const device = await adapter.requestDevice();
+          if (device) {
+            return "webgpu";
+          }
+        }
+      } catch (error) {
+        console.warn("WebGPU detection failed, falling back to WASM:", error);
+      }
+    }
+    // Fallback to WASM
+    return "wasm";
+  }
+
+  const device = await detectDevice();
+  self.postMessage({ type: "info", message: `Using device: "${device}"` });
+
   const model_id = "onnx-community/Kokoro-82M-v1.0-ONNX";
   type VoiceKey = keyof typeof tts.voices;
   let voice: VoiceKey | undefined;
   const tts = await KokoroTTS.from_pretrained(model_id, {
     dtype: "fp32",
-    device: "webgpu",
+    device,
   });
-
-  const device = "webgpu" as const;
-  self.postMessage({ type: "info", message: `Using device: "${device}"` });
   self.postMessage({
     type: "info",
     message: "Loading models...",
@@ -98,7 +119,7 @@ import {
   const tokenizer = await AutoTokenizer.from_pretrained(llm_model_id);
   const llm = await AutoModelForCausalLM.from_pretrained(llm_model_id, {
     dtype: "q4f16",
-    device: "webgpu",
+    device,
   });
 
   const SYSTEM_MESSAGE = {
