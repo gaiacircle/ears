@@ -335,9 +335,9 @@ async function detectDevice(): Promise<"webgpu" | "wasm"> {
 
     switch (type) {
       case "start_call": {
-        const voiceKey = (voice ?? "af_heart") as VoiceKey;
-        const name: string = tts.voices[voiceKey]?.name ?? "Heart";
-        greet(`Hey there, my name is ${name}! How can I help you today?`);
+        // const voiceKey = (voice ?? "af_heart") as VoiceKey;
+        // const name: string = tts.voices[voiceKey]?.name ?? "Heart";
+        // say(`Hey there, my name is ${name}! How can I help you today?`);
         return;
       }
       case "end_call":
@@ -425,7 +425,7 @@ async function detectDevice(): Promise<"webgpu" | "wasm"> {
     dispatchForTranscriptionAndResetAudioBuffer();
   };
 
-  function greet(text: string): void {
+  function say(text: string): void {
     isPlaying = true;
     const splitter = new TextSplitterStream();
     const stream = tts.stream(splitter, { voice: voice as VoiceKey });
