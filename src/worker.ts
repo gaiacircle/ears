@@ -11,6 +11,7 @@ import {
   // Speech recognition
   Tensor,
   pipeline,
+  PretrainedConfig,
 } from "@huggingface/transformers";
 
 // @ts-ignore - Module resolution issue with kokoro-js
@@ -27,28 +28,44 @@ import {
   MIN_SPEECH_DURATION_SAMPLES,
 } from "./constants";
 
-(async (): Promise<void> => {
-  // Detect available device with fallback
-  async function detectDevice(): Promise<"webgpu" | "wasm"> {
-    // Check if WebGPU is supported and functional
-    if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
-      try {
-        const gpu = (navigator as any).gpu;
-        const adapter = await gpu.requestAdapter();
-        if (adapter) {
-          const device = await adapter.requestDevice();
-          if (device) {
-            return "webgpu";
-          }
-        }
-      } catch (error) {
-        console.warn("WebGPU detection failed, falling back to WASM:", error);
-      }
-    }
-    // Fallback to WASM
-    return "wasm";
-  }
+// biome-ignore lint/suspicious/noExplicitAny: transformers.js doesn't provide type for past_key_values values
+type PastKeyValues = Record<string, any>;
 
+type GenerationObjectOutput = {
+  past_key_values: PastKeyValues;
+  sequences: Tensor;
+};
+
+function getGPU(navigator: Navigator) {
+  if (!("gpu" in navigator)) return null;
+
+  return navigator.gpu as {
+    requestAdapter: () => Promise<{ requestDevice: () => Promise<string> }>;
+  };
+}
+
+// Detect available device with fallback
+async function detectDevice(): Promise<"webgpu" | "wasm"> {
+  // Check if WebGPU is supported and functional
+  const gpu = getGPU(navigator);
+  if (gpu) {
+    try {
+      const adapter = await gpu.requestAdapter();
+      if (adapter) {
+        const device = await adapter.requestDevice();
+        if (device) {
+          return "webgpu";
+        }
+      }
+    } catch (error) {
+      console.warn("WebGPU detection failed, falling back to WASM:", error);
+    }
+  }
+  // Fallback to WASM
+  return "wasm";
+}
+
+(async (): Promise<void> => {
   const device = await detectDevice();
   self.postMessage({ type: "info", message: `Using device: "${device}"` });
 
@@ -69,7 +86,7 @@ import {
   const silero_vad = await AutoModel.from_pretrained(
     "onnx-community/silero-vad",
     {
-      config: { model_type: "custom" } as any,
+      config: new PretrainedConfig({ model_type: "custom" }),
       dtype: "fp32", // Full-precision
     }
   ).catch((error) => {
@@ -130,7 +147,7 @@ import {
   await llm.generate({ ...tokenizer("x"), max_new_tokens: 1 }); // Compile shaders
 
   let messages: Array<{ role: string; content: string }> = [SYSTEM_MESSAGE];
-  let past_key_values_cache: any = null;
+  let past_key_values_cache: PastKeyValues | null = null;
   let stopping_criteria: InterruptableStoppingCriteria | undefined;
   self.postMessage({
     type: "status",
@@ -140,16 +157,22 @@ import {
   });
 
   // Global audio buffer to store incoming audio
-  const BUFFER: Float32Array = new Float32Array(MAX_BUFFER_DURATION * INPUT_SAMPLE_RATE);
-  let bufferPointer: number = 0;
+  const BUFFER: Float32Array = new Float32Array(
+    MAX_BUFFER_DURATION * INPUT_SAMPLE_RATE
+  );
+  let bufferPointer = 0;
 
   // Initial state for VAD
   const sr: Tensor = new Tensor("int64", [INPUT_SAMPLE_RATE], []);
-  let state: Tensor = new Tensor("float32", new Float32Array(2 * 1 * 128), [2, 1, 128]);
+  let state: Tensor = new Tensor(
+    "float32",
+    new Float32Array(2 * 1 * 128),
+    [2, 1, 128]
+  );
 
   // Whether we are in the process of adding audio to the buffer
-  let isRecording: boolean = false;
-  let isPlaying: boolean = false; // new flag
+  let isRecording = false;
+  let isPlaying = false; // new flag
 
   /**
    * Perform Voice Activity Detection (VAD)
@@ -223,7 +246,7 @@ import {
     });
 
     stopping_criteria = new InterruptableStoppingCriteria();
-    const generateResult = (await llm.generate({
+    const { past_key_values, sequences } = (await llm.generate({
       ...inputs,
       past_key_values: past_key_values_cache,
 
@@ -231,9 +254,10 @@ import {
       max_new_tokens: 1024,
       streamer,
       stopping_criteria,
+      // Causes return value to be an object with past_key_values and sequences
       return_dict_in_generate: true,
-    })) as any;
-    const { past_key_values, sequences } = generateResult;
+    })) as GenerationObjectOutput;
+
     past_key_values_cache = past_key_values;
 
     // Finally, close the stream to signal that no more text will be added.
@@ -248,8 +272,8 @@ import {
   };
 
   // Track the number of samples after the last speech chunk
-  let postSpeechSamples: number = 0;
-  const resetAfterRecording = (offset: number = 0): void => {
+  let postSpeechSamples = 0;
+  const resetAfterRecording = (offset = 0): void => {
     self.postMessage({
       type: "status",
       status: "recording_end",
@@ -275,11 +299,19 @@ import {
     const overflowLength: number = overflow?.length ?? 0;
 
     // Send the audio buffer to the worker
-    const buffer: Float32Array = BUFFER.slice(0, bufferPointer + SPEECH_PAD_SAMPLES);
+    const buffer: Float32Array = BUFFER.slice(
+      0,
+      bufferPointer + SPEECH_PAD_SAMPLES
+    );
 
-    const prevLength: number = prevBuffers.reduce((acc, b) => acc + b.length, 0);
-    const paddedBuffer: Float32Array = new Float32Array(prevLength + buffer.length);
-    let offset: number = 0;
+    const prevLength: number = prevBuffers.reduce(
+      (acc, b) => acc + b.length,
+      0
+    );
+    const paddedBuffer: Float32Array = new Float32Array(
+      prevLength + buffer.length
+    );
+    let offset = 0;
     for (const prev of prevBuffers) {
       paddedBuffer.set(prev, offset);
       offset += prev.length;
@@ -294,7 +326,7 @@ import {
     resetAfterRecording(overflowLength);
   };
 
-  let prevBuffers: Float32Array[] = [];
+  const prevBuffers: Float32Array[] = [];
   self.onmessage = async (event: MessageEvent): Promise<void> => {
     const { type, buffer } = event.data;
 
@@ -311,6 +343,8 @@ import {
       case "end_call":
         messages = [SYSTEM_MESSAGE];
         past_key_values_cache = null;
+        stopping_criteria?.interrupt();
+        return;
       case "interrupt":
         stopping_criteria?.interrupt();
         return;
@@ -348,12 +382,12 @@ import {
       const overflow: Float32Array = buffer.subarray(remaining);
       dispatchForTranscriptionAndResetAudioBuffer(overflow);
       return;
-    } else {
-      // The buffer is smaller than the remaining space in the global buffer,
-      // so we copy it to the global buffer
-      BUFFER.set(buffer, bufferPointer);
-      bufferPointer += buffer.length;
     }
+
+    // The buffer is smaller than the remaining space in the global buffer,
+    // so we copy it to the global buffer
+    BUFFER.set(buffer, bufferPointer);
+    bufferPointer += buffer.length;
 
     if (isSpeech) {
       if (!isRecording) {
