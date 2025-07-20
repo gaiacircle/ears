@@ -1,405 +1,405 @@
 import { useEffect, useState, useRef } from "react";
 import { Mic, PhoneOff, ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { INPUT_SAMPLE_RATE } from "./constants";
 
 import WORKLET from "./play-worklet.js";
 
 // Type definitions
 interface Voice {
-  name: string;
-  language: string;
-  gender: string;
+	name: string;
+	language: string;
+	gender: string;
 }
 
 interface WorkerMessage {
-  type: string;
-  status?: string;
-  voices?: Record<string, Voice>;
-  result?: {
-    audio: Float32Array;
-  };
-  error?: Error;
+	type: string;
+	status?: string;
+	voices?: Record<string, Voice>;
+	result?: {
+		audio: Float32Array;
+	};
+	error?: Error;
 }
 
 export default function App() {
-  const [callStartTime, setCallStartTime] = useState<number | null>(null);
-  const [callStarted, setCallStarted] = useState(false);
-  const [playing, setPlaying] = useState(false);
+	const [callStartTime, setCallStartTime] = useState<number | null>(null);
+	const [callStarted, setCallStarted] = useState(false);
+	const [playing, setPlaying] = useState(false);
 
-  const [voice, setVoice] = useState("af_heart");
-  const [voices, setVoices] = useState<Record<string, Voice>>({});
+	const [voice, setVoice] = useState("af_heart");
+	const [voices, setVoices] = useState<Record<string, Voice>>({});
 
-  const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [listeningScale, setListeningScale] = useState(1);
-  const [speakingScale, setSpeakingScale] = useState(1);
-  const [ripples, setRipples] = useState<number[]>([]);
+	const [isListening, setIsListening] = useState(false);
+	const [isSpeaking, setIsSpeaking] = useState(false);
+	const [listeningScale, setListeningScale] = useState(1);
+	const [speakingScale, setSpeakingScale] = useState(1);
+	const [ripples, setRipples] = useState<number[]>([]);
 
-  const [ready, setReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [elapsedTime, setElapsedTime] = useState("00:00");
-  const worker = useRef<Worker | null>(null);
+	const [ready, setReady] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const [elapsedTime, setElapsedTime] = useState("00:00");
+	const worker = useRef<Worker | null>(null);
 
-  const micStreamRef = useRef<MediaStream | null>(null);
-  const node = useRef<AudioWorkletNode | null>(null);
+	const micStreamRef = useRef<MediaStream | null>(null);
+	const node = useRef<AudioWorkletNode | null>(null);
 
-  useEffect(() => {
-    worker.current?.postMessage({
-      type: "set_voice",
-      voice,
-    });
-  }, [voice]);
+	useEffect(() => {
+		worker.current?.postMessage({
+			type: "set_voice",
+			voice,
+		});
+	}, [voice]);
 
-  useEffect(() => {
-    if (!callStarted) {
-      // Reset worker state after call ends
-      worker.current?.postMessage({
-        type: "end_call",
-      });
-    }
-  }, [callStarted]);
+	useEffect(() => {
+		if (!callStarted) {
+			// Reset worker state after call ends
+			worker.current?.postMessage({
+				type: "end_call",
+			});
+		}
+	}, [callStarted]);
 
-  useEffect(() => {
-    if (callStarted && callStartTime) {
-      const interval = setInterval(() => {
-        const diff = Math.floor((Date.now() - callStartTime) / 1000);
-        const minutes = String(Math.floor(diff / 60)).padStart(2, "0");
-        const seconds = String(diff % 60).padStart(2, "0");
-        setElapsedTime(`${minutes}:${seconds}`);
-      }, 1000);
-      return () => clearInterval(interval);
-    } else {
-      setElapsedTime("00:00");
-    }
-  }, [callStarted, callStartTime]);
+	useEffect(() => {
+		if (callStarted && callStartTime) {
+			const interval = setInterval(() => {
+				const diff = Math.floor((Date.now() - callStartTime) / 1000);
+				const minutes = String(Math.floor(diff / 60)).padStart(2, "0");
+				const seconds = String(diff % 60).padStart(2, "0");
+				setElapsedTime(`${minutes}:${seconds}`);
+			}, 1000);
+			return () => clearInterval(interval);
+		}
 
-  useEffect(() => {
-    worker.current ??= new Worker(new URL("./worker.js", import.meta.url), {
-      type: "module",
-    });
+		// Begin
+		setElapsedTime("00:00");
+	}, [callStarted, callStartTime]);
 
-    const onMessage = ({ data }: { data: WorkerMessage }) => {
-      if (data.error) {
-        return setError(data.error.message);
-      }
+	// biome-ignore lint/correctness/useExhaustiveDependencies: one-time initialization
+	useEffect(() => {
+		worker.current ??= new Worker(new URL("./worker.js", import.meta.url), {
+			type: "module",
+		});
 
-      switch (data.type) {
-        case "status":
-          if (data.status === "recording_start") {
-            setIsListening(true);
-            setIsSpeaking(false);
-          } else if (data.status === "recording_end") {
-            setIsListening(false);
-          } else if (data.status === "ready") {
-            setVoices(data.voices || {});
-            setReady(true);
-          }
-          break;
-        case "input":
-          console.log('input', data)
-          break;
-        case "output":
-          if (!playing && data.result?.audio) {
-            node.current?.port.postMessage(data.result.audio);
-            setPlaying(true);
-            setIsSpeaking(true);
-            setIsListening(false);
-          }
-          break;
-      }
-    };
-    const onError = (ev: ErrorEvent) => setError(ev.message);
+		const onMessage = ({ data }: { data: WorkerMessage }) => {
+			if (data.error) {
+				return setError(data.error.message);
+			}
 
-    worker.current.addEventListener("message", onMessage);
-    worker.current.addEventListener("error", onError);
+			switch (data.type) {
+				case "status":
+					if (data.status === "recording_start") {
+						setIsListening(true);
+						setIsSpeaking(false);
+					} else if (data.status === "recording_end") {
+						setIsListening(false);
+					} else if (data.status === "ready") {
+						setVoices(data.voices || {});
+						setReady(true);
+					}
+					break;
+				case "input":
+					console.log("input", data);
+					break;
+				case "output":
+					if (!playing && data.result?.audio) {
+						node.current?.port.postMessage(data.result.audio);
+						setPlaying(true);
+						setIsSpeaking(true);
+						setIsListening(false);
+					}
+					break;
+			}
+		};
+		const onError = (ev: ErrorEvent) => setError(ev.message);
 
-    return () => {
-      worker.current?.removeEventListener("message", onMessage);
-      worker.current?.removeEventListener("error", onError);
-    };
-  }, []);
+		worker.current.addEventListener("message", onMessage);
+		worker.current.addEventListener("error", onError);
 
-  useEffect(() => {
-    if (!callStarted) return;
+		return () => {
+			worker.current?.removeEventListener("message", onMessage);
+			worker.current?.removeEventListener("error", onError);
+		};
+	}, []);
 
-    let worklet: AudioWorkletNode | undefined;
-    let inputAudioContext: AudioContext | undefined;
-    let source: MediaStreamAudioSourceNode | undefined;
-    let ignore = false;
+	useEffect(() => {
+		if (!callStarted) return;
 
-    let outputAudioContext: AudioContext | undefined;
-    const audioStreamPromise = Promise.resolve(micStreamRef.current);
+		let worklet: AudioWorkletNode | undefined;
+		let inputAudioContext: AudioContext | undefined;
+		let source: MediaStreamAudioSourceNode | undefined;
+		let ignore = false;
 
-    audioStreamPromise
-      .then(async (stream) => {
-        if (ignore) return;
+		let outputAudioContext: AudioContext | undefined;
+		const audioStreamPromise = Promise.resolve(micStreamRef.current);
 
-        inputAudioContext = new (window.AudioContext ||
-          (window as any).webkitAudioContext)({
-          sampleRate: INPUT_SAMPLE_RATE,
-        });
+		audioStreamPromise
+			.then(async (stream) => {
+				if (ignore) return;
+				if (!stream) throw new Error("No stream provided");
 
-        const analyser = inputAudioContext.createAnalyser();
-        analyser.fftSize = 256;
-        source = inputAudioContext.createMediaStreamSource(stream!);
-        source.connect(analyser);
+				const AudioContext =
+					"webkitAudioContext" in window
+						? (window.webkitAudioContext as typeof window.AudioContext)
+						: window.AudioContext;
 
-        const inputDataArray = new Uint8Array(analyser.frequencyBinCount);
+				inputAudioContext = new AudioContext({ sampleRate: INPUT_SAMPLE_RATE });
 
-        function calculateRMS(array: Uint8Array) {
-          let sum = 0;
-          for (let i = 0; i < array.length; ++i) {
-            const normalized = array[i] / 128 - 1;
-            sum += normalized * normalized;
-          }
-          const rms = Math.sqrt(sum / array.length);
-          return rms;
-        }
+				const analyser = inputAudioContext.createAnalyser();
+				analyser.fftSize = 256;
+				source = inputAudioContext.createMediaStreamSource(stream);
+				source.connect(analyser);
 
-        await inputAudioContext.audioWorklet.addModule(
-          new URL("./vad-processor.js", import.meta.url),
-        );
-        worklet = new AudioWorkletNode(inputAudioContext, "vad-processor", {
-          numberOfInputs: 1,
-          numberOfOutputs: 0,
-          channelCount: 1,
-          channelCountMode: "explicit",
-          channelInterpretation: "discrete",
-        });
+				const inputDataArray = new Uint8Array(analyser.frequencyBinCount);
 
-        source.connect(worklet);
-        worklet.port.onmessage = (event: MessageEvent) => {
-          const { buffer } = event.data;
-          worker.current?.postMessage({ type: "audio", buffer });
-        };
+				function calculateRMS(array: Uint8Array) {
+					let sum = 0;
+					for (let i = 0; i < array.length; ++i) {
+						const normalized = array[i] / 128 - 1;
+						sum += normalized * normalized;
+					}
+					const rms = Math.sqrt(sum / array.length);
+					return rms;
+				}
 
-        outputAudioContext = new AudioContext({
-          sampleRate: 24000,
-        });
-        outputAudioContext.resume();
+				await inputAudioContext.audioWorklet.addModule(
+					new URL("./vad-processor.js", import.meta.url),
+				);
+				worklet = new AudioWorkletNode(inputAudioContext, "vad-processor", {
+					numberOfInputs: 1,
+					numberOfOutputs: 0,
+					channelCount: 1,
+					channelCountMode: "explicit",
+					channelInterpretation: "discrete",
+				});
 
-        const blob = new Blob([`(${WORKLET.toString()})()`], {
-          type: "application/javascript",
-        });
-        const url = URL.createObjectURL(blob);
-        await outputAudioContext.audioWorklet.addModule(url);
-        URL.revokeObjectURL(url);
+				source.connect(worklet);
+				worklet.port.onmessage = (event: MessageEvent) => {
+					const { buffer } = event.data;
+					worker.current?.postMessage({ type: "audio", buffer });
+				};
 
-        node.current = new AudioWorkletNode(
-          outputAudioContext,
-          "buffered-audio-worklet-processor",
-        );
+				outputAudioContext = new AudioContext({
+					sampleRate: 24000,
+				});
+				outputAudioContext.resume();
 
-        node.current.port.onmessage = (event: MessageEvent) => {
-          if (event.data.type === "playback_ended") {
-            setPlaying(false);
-            setIsSpeaking(false);
-            worker.current?.postMessage({ type: "playback_ended" });
-          }
-        };
+				const blob = new Blob([`(${WORKLET.toString()})()`], {
+					type: "application/javascript",
+				});
+				const url = URL.createObjectURL(blob);
+				await outputAudioContext.audioWorklet.addModule(url);
+				URL.revokeObjectURL(url);
 
-        const outputAnalyser = outputAudioContext.createAnalyser();
-        outputAnalyser.fftSize = 256;
+				node.current = new AudioWorkletNode(
+					outputAudioContext,
+					"buffered-audio-worklet-processor",
+				);
 
-        node.current.connect(outputAnalyser);
-        outputAnalyser.connect(outputAudioContext.destination);
+				node.current.port.onmessage = (event: MessageEvent) => {
+					if (event.data.type === "playback_ended") {
+						setPlaying(false);
+						setIsSpeaking(false);
+						worker.current?.postMessage({ type: "playback_ended" });
+					}
+				};
 
-        const outputDataArray = new Uint8Array(
-          outputAnalyser.frequencyBinCount,
-        );
+				const outputAnalyser = outputAudioContext.createAnalyser();
+				outputAnalyser.fftSize = 256;
 
-        function updateVisualizers() {
-          analyser.getByteTimeDomainData(inputDataArray);
-          const rms = calculateRMS(inputDataArray);
-          const targetScale = 1 + Math.min(1.25 * rms, 0.25);
-          setListeningScale((prev) => prev + (targetScale - prev) * 0.25);
+				node.current.connect(outputAnalyser);
+				outputAnalyser.connect(outputAudioContext.destination);
 
-          outputAnalyser.getByteTimeDomainData(outputDataArray);
-          const outputRMS = calculateRMS(outputDataArray);
-          const targetOutputScale = 1 + Math.min(1.25 * outputRMS, 0.25);
-          setSpeakingScale((prev) => prev + (targetOutputScale - prev) * 0.25);
+				const outputDataArray = new Uint8Array(
+					outputAnalyser.frequencyBinCount,
+				);
 
-          requestAnimationFrame(updateVisualizers);
-        }
-        updateVisualizers();
-      })
-      .catch((err) => {
-        setError(err.message);
-        console.error(err);
-      });
+				function updateVisualizers() {
+					analyser.getByteTimeDomainData(inputDataArray);
+					const rms = calculateRMS(inputDataArray);
+					const targetScale = 1 + Math.min(1.25 * rms, 0.25);
+					setListeningScale((prev) => prev + (targetScale - prev) * 0.25);
 
-    return () => {
-      ignore = true;
-      audioStreamPromise.then((s) => s?.getTracks().forEach((t) => t.stop()));
-      source?.disconnect();
-      worklet?.disconnect();
-      inputAudioContext?.close();
+					outputAnalyser.getByteTimeDomainData(outputDataArray);
+					const outputRMS = calculateRMS(outputDataArray);
+					const targetOutputScale = 1 + Math.min(1.25 * outputRMS, 0.25);
+					setSpeakingScale((prev) => prev + (targetOutputScale - prev) * 0.25);
 
-      outputAudioContext?.close();
-    };
-  }, [callStarted]);
+					requestAnimationFrame(updateVisualizers);
+				}
+				updateVisualizers();
+			})
+			.catch((err) => {
+				setError(err.message);
+				console.error(err);
+			});
 
-  useEffect(() => {
-    if (!callStarted) return;
-    const interval = setInterval(() => {
-      const id = Date.now();
-      setRipples((prev) => [...prev, id]);
-      setTimeout(() => {
-        setRipples((prev) => prev.filter((r) => r !== id));
-      }, 1500);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [callStarted]);
+		return () => {
+			ignore = true;
+			audioStreamPromise.then((s) => s?.getTracks().forEach((t) => t.stop()));
+			source?.disconnect();
+			worklet?.disconnect();
+			inputAudioContext?.close();
 
-  const handleStartCall = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: true,
-          autoGainControl: true,
-          noiseSuppression: true,
-          sampleRate: INPUT_SAMPLE_RATE,
-        },
-      });
-      micStreamRef.current = stream;
+			outputAudioContext?.close();
+		};
+	}, [callStarted]);
 
-      setCallStartTime(Date.now());
-      setCallStarted(true);
-      worker.current?.postMessage({ type: "start_call" });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      console.error(err);
-    }
-  };
+	useEffect(() => {
+		if (!callStarted) return;
+		const interval = setInterval(() => {
+			const id = Date.now();
+			setRipples((prev) => [...prev, id]);
+			setTimeout(() => {
+				setRipples((prev) => prev.filter((r) => r !== id));
+			}, 1500);
+		}, 1000);
+		return () => clearInterval(interval);
+	}, [callStarted]);
 
-  return (
-    <div className="h-screen min-h-[240px] flex items-center justify-center bg-gray-50 p-4 relative">
-      <div className="h-full max-h-[320px] w-[640px] bg-white rounded-xl shadow-lg p-8 flex items-center justify-between space-x-16">
-        <div className="text-green-700 w-[140px]">
-          <div className="text-xl font-bold flex justify-between">
-            {voices?.[voice]?.name}
-            <span className="font-normal text-gray-500">{elapsedTime}</span>
-          </div>
-          <div className="text-base relative">
-            <button
-              type="button"
-              disabled={!ready}
-              className={`w-full flex items-center justify-between border border-gray-300 rounded-md transition-colors ${
-                ready
-                  ? "bg-transparent hover:border-gray-400"
-                  : "bg-gray-100 opacity-50 cursor-not-allowed"
-              }`}
-            >
-              <span className="px-2 py-1">Select voice</span>
-              <ChevronDown className="absolute right-2" />
-            </button>
-            <select
-              value={voice}
-              onChange={(e) => setVoice(e.target.value)}
-              className="absolute inset-0 opacity-0 cursor-pointer"
-              disabled={!ready}
-            >
-              {Object.entries(voices).map(([key, v]: [string, Voice]) => (
-                <option key={key} value={key}>
-                  {`${v.name} (${
-                    v.language === "en-us" ? "American" : v.language
-                  } ${v.gender})`}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+	const handleStartCall = async () => {
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({
+				audio: {
+					channelCount: 1,
+					echoCancellation: true,
+					autoGainControl: true,
+					noiseSuppression: true,
+					sampleRate: INPUT_SAMPLE_RATE,
+				},
+			});
+			micStreamRef.current = stream;
 
-        <div className="relative flex items-center justify-center w-32 h-32 flex-shrink-0 aspect-square">
-          {callStarted &&
-            ripples.map((id) => (
-              <div
-                key={id}
-                className="absolute inset-0 rounded-full border-2 border-green-200 pointer-events-none"
-                style={{ animation: "ripple 1.5s ease-out forwards" }}
-              />
-            ))}
-          {/* Pulsing loader while initializing */}
-          <div
-            className={`absolute w-32 h-32 rounded-full ${
-              error ? "bg-red-200" : "bg-green-200"
-            } ${!ready ? "animate-ping opacity-75" : ""}`}
-            style={{ animationDuration: "1.5s" }}
-          />
-          {/* Main rings */}
-          <div
-            className={`absolute w-32 h-32 rounded-full shadow-inner transition-transform duration-300 ease-out ${
-              error ? "bg-red-300" : "bg-green-300"
-            } ${!ready ? "opacity-0" : ""}`}
-            style={{ transform: `scale(${speakingScale})` }}
-          />
-          <div
-            className={`absolute w-32 h-32 rounded-full shadow-inner transition-transform duration-300 ease-out ${
-              error ? "bg-red-200" : "bg-green-200"
-            } ${!ready ? "opacity-0" : ""}`}
-            style={{ transform: `scale(${listeningScale})` }}
-          />
-          {/* Center text: show error if present, else existing statuses */}
-          <div
-            className={`absolute z-10 text-lg text-center ${
-              error ? "text-red-700" : "text-gray-700"
-            }`}
-          >
-            {error ? (
-              error
-            ) : (
-              <>
-                {!ready && "Loading..."}
-                {isListening && "Listening..."}
-                {isSpeaking && "Speaking..."}
-              </>
-            )}
-          </div>
-        </div>
+			setCallStartTime(Date.now());
+			setCallStarted(true);
+			worker.current?.postMessage({ type: "start_call" });
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+			console.error(err);
+		}
+	};
 
-        <div className="space-y-4 w-[140px]">
-          {callStarted ? (
-            <button
-              className="flex items-center space-x-2 px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200"
-              onClick={() => {
-                setCallStarted(false);
-                setCallStartTime(null);
-                setPlaying(false);
-                setIsListening(false);
-                setIsSpeaking(false);
-              }}
-            >
-              <PhoneOff className="w-5 h-5" />
-              <span>End call</span>
-            </button>
-          ) : (
-            <button
-              className={`flex items-center space-x-2 px-4 py-2 rounded-md ${
-                ready
-                  ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                  : "bg-blue-100 text-blue-700 opacity-50 cursor-not-allowed"
-              }`}
-              onClick={handleStartCall}
-              disabled={!ready}
-            >
-              <span>Start call</span>
-            </button>
-          )}
-        </div>
-      </div>
+	return (
+		<div className="h-screen min-h-[240px] flex items-center justify-center bg-gray-50 p-4 relative">
+			<div className="h-full max-h-[320px] w-[640px] bg-white rounded-xl shadow-lg p-8 flex items-center justify-between space-x-16">
+				<div className="text-green-700 w-[140px]">
+					<div className="text-xl font-bold flex justify-between">
+						{voices?.[voice]?.name}
+						<span className="font-normal text-gray-500">{elapsedTime}</span>
+					</div>
+					<div className="text-base relative">
+						<button
+							type="button"
+							disabled={!ready}
+							className={`w-full flex items-center justify-between border border-gray-300 rounded-md transition-colors ${
+								ready
+									? "bg-transparent hover:border-gray-400"
+									: "bg-gray-100 opacity-50 cursor-not-allowed"
+							}`}
+						>
+							<span className="px-2 py-1">Select voice</span>
+							<ChevronDown className="absolute right-2" />
+						</button>
+						<select
+							value={voice}
+							onChange={(e) => setVoice(e.target.value)}
+							className="absolute inset-0 opacity-0 cursor-pointer"
+							disabled={!ready}
+						>
+							{Object.entries(voices).map(([key, v]: [string, Voice]) => (
+								<option key={key} value={key}>
+									{`${v.name} (${
+										v.language === "en-us" ? "American" : v.language
+									} ${v.gender})`}
+								</option>
+							))}
+						</select>
+					</div>
+				</div>
 
-      <div className="absolute bottom-4 text-sm">
-        Built with{" "}
-        <a
-          href="https://github.com/huggingface/transformers.js"
-          rel="noopener noreferrer"
-          target="_blank"
-          className="text-blue-600 hover:underline"
-        >
-          🤗 Transformers.js
-        </a>
-      </div>
-    </div>
-  );
+				<div className="relative flex items-center justify-center w-32 h-32 flex-shrink-0 aspect-square">
+					{callStarted &&
+						ripples.map((id) => (
+							<div
+								key={id}
+								className="absolute inset-0 rounded-full border-2 border-green-200 pointer-events-none"
+								style={{ animation: "ripple 1.5s ease-out forwards" }}
+							/>
+						))}
+					{/* Pulsing loader while initializing */}
+					<div
+						className={`absolute w-32 h-32 rounded-full ${
+							error ? "bg-red-200" : "bg-green-200"
+						} ${!ready ? "animate-ping opacity-75" : ""}`}
+						style={{ animationDuration: "1.5s" }}
+					/>
+					{/* Main rings */}
+					<div
+						className={`absolute w-32 h-32 rounded-full shadow-inner transition-transform duration-300 ease-out ${
+							error ? "bg-red-300" : "bg-green-300"
+						} ${!ready ? "opacity-0" : ""}`}
+						style={{ transform: `scale(${speakingScale})` }}
+					/>
+					<div
+						className={`absolute w-32 h-32 rounded-full shadow-inner transition-transform duration-300 ease-out ${
+							error ? "bg-red-200" : "bg-green-200"
+						} ${!ready ? "opacity-0" : ""}`}
+						style={{ transform: `scale(${listeningScale})` }}
+					/>
+					{/* Center text: show error if present, else existing statuses */}
+					<div
+						className={`absolute z-10 text-lg text-center ${
+							error ? "text-red-700" : "text-gray-700"
+						}`}
+					>
+						{error ? (
+							error
+						) : (
+							<>
+								{!ready && "Loading..."}
+								{isListening && "Listening..."}
+								{isSpeaking && "Speaking..."}
+							</>
+						)}
+					</div>
+				</div>
+
+				<div className="space-y-4 w-[140px]">
+					{callStarted ? (
+						<button
+							type="button"
+							className="flex items-center space-x-2 px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200"
+							onClick={() => {
+								setCallStarted(false);
+								setCallStartTime(null);
+								setPlaying(false);
+								setIsListening(false);
+								setIsSpeaking(false);
+							}}
+						>
+							<PhoneOff className="w-5 h-5" />
+							<span>End call</span>
+						</button>
+					) : (
+						<button
+							type="button"
+							className={`flex items-center space-x-2 px-4 py-2 rounded-md ${
+								ready
+									? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+									: "bg-blue-100 text-blue-700 opacity-50 cursor-not-allowed"
+							}`}
+							onClick={handleStartCall}
+							disabled={!ready}
+						>
+							<span>Start call</span>
+						</button>
+					)}
+				</div>
+			</div>
+
+			<div>
+				<Button>Button Component</Button>
+			</div>
+		</div>
+	);
 }
