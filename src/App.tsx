@@ -1,9 +1,22 @@
 import { useEffect, useState, useRef } from "react";
-import { Mic, PhoneOff, ChevronDown } from "lucide-react";
+import { Mic, PhoneOff, ChevronDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { INPUT_SAMPLE_RATE } from "./constants";
 
 import WORKLET from "./play-worklet.js";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuTrigger,
+	DropdownMenuItem,
+	DropdownMenuGroup,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+} from "./components/ui/dropdown-menu";
+import {
+	DropdownMenuItemIndicator,
+	DropdownMenuPortal,
+} from "@radix-ui/react-dropdown-menu";
 
 // Type definitions
 interface Voice {
@@ -236,7 +249,13 @@ export default function App() {
 
 		return () => {
 			ignore = true;
-			audioStreamPromise.then((s) => s?.getTracks().forEach((t) => t.stop()));
+			audioStreamPromise.then((s) => {
+				const tracks = s?.getTracks();
+				if (!tracks) return;
+				for (const track of tracks) {
+					track.stop();
+				}
+			});
 			source?.disconnect();
 			worklet?.disconnect();
 			inputAudioContext?.close();
@@ -283,38 +302,27 @@ export default function App() {
 		<div className="h-screen min-h-[240px] flex items-center justify-center bg-gray-50 p-4 relative">
 			<div className="h-full max-h-[320px] w-[640px] bg-white rounded-xl shadow-lg p-8 flex items-center justify-between space-x-16">
 				<div className="text-green-700 w-[140px]">
-					<div className="text-xl font-bold flex justify-between">
-						{voices?.[voice]?.name}
-						<span className="font-normal text-gray-500">{elapsedTime}</span>
-					</div>
-					<div className="text-base relative">
-						<button
-							type="button"
-							disabled={!ready}
-							className={`w-full flex items-center justify-between border border-gray-300 rounded-md transition-colors ${
-								ready
-									? "bg-transparent hover:border-gray-400"
-									: "bg-gray-100 opacity-50 cursor-not-allowed"
-							}`}
-						>
-							<span className="px-2 py-1">Select voice</span>
-							<ChevronDown className="absolute right-2" />
-						</button>
-						<select
-							value={voice}
-							onChange={(e) => setVoice(e.target.value)}
-							className="absolute inset-0 opacity-0 cursor-pointer"
-							disabled={!ready}
-						>
-							{Object.entries(voices).map(([key, v]: [string, Voice]) => (
-								<option key={key} value={key}>
-									{`${v.name} (${
-										v.language === "en-us" ? "American" : v.language
-									} ${v.gender})`}
-								</option>
-							))}
-						</select>
-					</div>
+					<DropdownMenu>
+						<DropdownMenuTrigger>
+							<Button className="flex justify-between min-w-[180px]">
+								{voices[voice].name}
+								<ChevronDown />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuPortal>
+							<DropdownMenuContent align="start">
+								<DropdownMenuRadioGroup value={voice} onValueChange={setVoice}>
+									{Object.entries(voices).map(([key, v]: [string, Voice]) => (
+										<DropdownMenuRadioItem key={key} value={key}>
+											{`${v.name} (${
+												v.language === "en-us" ? "American" : v.language
+											} ${v.gender})`}
+										</DropdownMenuRadioItem>
+									))}
+								</DropdownMenuRadioGroup>
+							</DropdownMenuContent>
+						</DropdownMenuPortal>
+					</DropdownMenu>
 				</div>
 
 				<div className="relative flex items-center justify-center w-32 h-32 flex-shrink-0 aspect-square">
@@ -357,7 +365,7 @@ export default function App() {
 						) : (
 							<>
 								{!ready && "Loading..."}
-								{isListening && "Listening..."}
+								{isListening && `Listening... ${elapsedTime}`}
 								{isSpeaking && "Speaking..."}
 							</>
 						)}
@@ -366,9 +374,7 @@ export default function App() {
 
 				<div className="space-y-4 w-[140px]">
 					{callStarted ? (
-						<button
-							type="button"
-							className="flex items-center space-x-2 px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200"
+						<Button
 							onClick={() => {
 								setCallStarted(false);
 								setCallStartTime(null);
@@ -379,26 +385,19 @@ export default function App() {
 						>
 							<PhoneOff className="w-5 h-5" />
 							<span>End call</span>
-						</button>
+						</Button>
 					) : (
-						<button
-							type="button"
-							className={`flex items-center space-x-2 px-4 py-2 rounded-md ${
-								ready
-									? "bg-blue-100 text-blue-700 hover:bg-blue-200"
-									: "bg-blue-100 text-blue-700 opacity-50 cursor-not-allowed"
+						<Button
+							className={`${
+								ready ? "hover:bg-blue-200" : "opacity-50 cursor-not-allowed"
 							}`}
 							onClick={handleStartCall}
 							disabled={!ready}
 						>
 							<span>Start call</span>
-						</button>
+						</Button>
 					)}
 				</div>
-			</div>
-
-			<div>
-				<Button>Button Component</Button>
 			</div>
 		</div>
 	);
