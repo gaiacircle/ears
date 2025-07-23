@@ -303,9 +303,9 @@ export default function App() {
 			<div className="h-full max-h-[320px] w-[640px] bg-white rounded-xl shadow-lg p-8 flex items-center justify-between space-x-16">
 				<div className="text-green-700 w-[140px]">
 					<DropdownMenu>
-						<DropdownMenuTrigger>
+						<DropdownMenuTrigger asChild>
 							<Button className="flex justify-between min-w-[180px]">
-								{voices[voice].name}
+								{voices[voice]?.name ?? "Select voice"}
 								<ChevronDown />
 							</Button>
 						</DropdownMenuTrigger>
