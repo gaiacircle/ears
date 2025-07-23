@@ -1,18 +1,13 @@
 {
-	"name": "kokoro-js",
-	"version": "1.2.1",
+	"name": "kokoro",
+	"version": "1.0.0",
 	"type": "module",
 	"exports": {
-		"types": "./types/kokoro.d.ts",
-		"node": {
-			"import": "./dist/kokoro.js",
-			"require": "./dist/kokoro.cjs"
-		},
+		"types": "./dist/kokoro.d.ts",
 		"default": "./dist/kokoro.js"
 	},
 	"scripts": {
 		"build": "tsup",
-		"format": "prettier --write . --print-width 1000",
 		"test": "vitest run"
 	},
 	"keywords": [
@@ -28,9 +23,6 @@
 		"path": false,
 		"fs/promises": false
 	},
-	"contributors": [
-		"Xenova"
-	],
 	"license": "Apache-2.0",
 	"description": "High-quality text-to-speech for the web",
 	"dependencies": {
@@ -39,23 +31,13 @@
 	},
 	"devDependencies": {
 		"typescript": "^5.7.3",
-		"tsup": "^8.0.0"
+		"tsup": "^8.5.0"
 	},
 	"files": [
-		"types",
+		"src",
 		"dist",
 		"voices",
 		"README.md",
 		"LICENSE"
-	],
-	"homepage": "https://github.com/hexgrad/kokoro",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/hexgrad/kokoro.git"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"jsdelivr": "./dist/kokoro.web.js",
-	"unpkg": "./dist/kokoro.web.js"
+	]
 }

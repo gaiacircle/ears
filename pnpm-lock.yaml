@@ -109,9 +109,9 @@ importers:
       embla-carousel-react:
         specifier: ^8.6.0
         version: 8.6.0(react@19.1.0)
-      kokoro-js:
-        specifier: ^1.2.1
-        version: 1.2.1
+      kokoro:
+        specifier: workspace:*
+        version: link:../packages/kokoro
       lucide-react:
         specifier: ^0.503.0
         version: 0.503.0(react@19.1.0)
@@ -208,7 +208,7 @@ importers:
         version: 1.2.1
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(@swc/core@1.13.2)(jiti@2.5.0)(postcss@8.5.6)(typescript@5.8.3)
       typescript:
         specifier: ^5.7.3
@@ -3478,9 +3478,6 @@ packages:
   kind-of@6.0.3:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
-
-  kokoro-js@1.2.1:
-    resolution: {integrity: sha512-oq0HZJWis3t8lERkMJh84WLU86dpYD0EuBPtqYnLlQzyFP1OkyBRDcweAqCfhNOpltyN9j/azp1H6uuC47gShw==}
 
   levn@0.4.1:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
@@ -8352,11 +8349,6 @@ snapshots:
       json-buffer: 3.0.1
 
   kind-of@6.0.3: {}
-
-  kokoro-js@1.2.1:
-    dependencies:
-      '@huggingface/transformers': 3.7.0
-      phonemizer: 1.2.1
 
   levn@0.4.1:
     dependencies:
