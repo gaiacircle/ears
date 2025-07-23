@@ -2,52 +2,52 @@
  * Sample rate of the input audio.
  * Coindicentally, this is the same for both models (Moonshine and Silero VAD)
  */
-export const INPUT_SAMPLE_RATE: number = 16000;
-const INPUT_SAMPLE_RATE_MS: number = INPUT_SAMPLE_RATE / 1000;
+export const INPUT_SAMPLE_RATE: number = 16000
+const INPUT_SAMPLE_RATE_MS: number = INPUT_SAMPLE_RATE / 1000
 
 /**
  * Probabilities ABOVE this value are considered as SPEECH
  */
-export const SPEECH_THRESHOLD: number = 0.3;
+export const SPEECH_THRESHOLD: number = 0.3
 
 /**
  * If current state is SPEECH, and the probability of the next state
  * is below this value, it is considered as NON-SPEECH.
  */
-export const EXIT_THRESHOLD: number = 0.1;
+export const EXIT_THRESHOLD: number = 0.1
 
 /**
  * After each speech chunk, wait for at least this amount of silence
  * before considering the next chunk as a new speech chunk
  */
-export const MIN_SILENCE_DURATION_MS: number = 400;
+export const MIN_SILENCE_DURATION_MS: number = 400
 export const MIN_SILENCE_DURATION_SAMPLES: number =
-  MIN_SILENCE_DURATION_MS * INPUT_SAMPLE_RATE_MS;
+	MIN_SILENCE_DURATION_MS * INPUT_SAMPLE_RATE_MS
 
 /**
  * Pad the speech chunk with this amount each side
  */
-export const SPEECH_PAD_MS: number = 80;
-export const SPEECH_PAD_SAMPLES: number = SPEECH_PAD_MS * INPUT_SAMPLE_RATE_MS;
+export const SPEECH_PAD_MS: number = 80
+export const SPEECH_PAD_SAMPLES: number = SPEECH_PAD_MS * INPUT_SAMPLE_RATE_MS
 
 /**
  * Final speech chunks below this duration are discarded
  */
-export const MIN_SPEECH_DURATION_SAMPLES: number = 250 * INPUT_SAMPLE_RATE_MS; // 250 ms
+export const MIN_SPEECH_DURATION_SAMPLES: number = 250 * INPUT_SAMPLE_RATE_MS // 250 ms
 
 /**
  * Maximum duration of audio that can be handled by Moonshine
  */
-export const MAX_BUFFER_DURATION: number = 30;
+export const MAX_BUFFER_DURATION: number = 30
 
 /**
  * Size of the incoming buffers
  */
-export const NEW_BUFFER_SIZE: number = 512;
+export const NEW_BUFFER_SIZE: number = 512
 
 /**
  * The number of previous buffers to keep, to ensure the audio is padded correctly
  */
 export const MAX_NUM_PREV_BUFFERS: number = Math.ceil(
-  SPEECH_PAD_SAMPLES / NEW_BUFFER_SIZE,
-);
+	SPEECH_PAD_SAMPLES / NEW_BUFFER_SIZE,
+)

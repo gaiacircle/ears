@@ -1,280 +1,273 @@
-import { useEffect, useState, useRef } from "react";
-import { Mic, PhoneOff, ChevronDown, Check } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { INPUT_SAMPLE_RATE } from "./constants";
+import { useEffect, useState, useRef } from "react"
+import { PhoneOff, ChevronDown } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { INPUT_SAMPLE_RATE } from "./constants"
 
-import WORKLET from "./play-worklet.js";
+import WORKLET from "./play-worklet.js"
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuTrigger,
-	DropdownMenuItem,
-	DropdownMenuGroup,
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
-} from "./components/ui/dropdown-menu";
-import {
-	DropdownMenuItemIndicator,
 	DropdownMenuPortal,
-} from "@radix-ui/react-dropdown-menu";
+} from "./components/ui/dropdown-menu"
 
 // Type definitions
 interface Voice {
-	name: string;
-	language: string;
-	gender: string;
+	name: string
+	language: string
+	gender: string
 }
 
 interface WorkerMessage {
-	type: string;
-	status?: string;
-	voices?: Record<string, Voice>;
+	type: string
+	status?: string
+	voices?: Record<string, Voice>
 	result?: {
-		audio: Float32Array;
-	};
-	error?: Error;
+		audio: Float32Array
+	}
+	error?: Error
 }
 
 export default function App() {
-	const [callStartTime, setCallStartTime] = useState<number | null>(null);
-	const [callStarted, setCallStarted] = useState(false);
-	const [playing, setPlaying] = useState(false);
+	const [callStartTime, setCallStartTime] = useState<number | null>(null)
+	const [callStarted, setCallStarted] = useState(false)
+	const [playing, setPlaying] = useState(false)
 
-	const [voice, setVoice] = useState("af_heart");
-	const [voices, setVoices] = useState<Record<string, Voice>>({});
+	const [voice, setVoice] = useState("af_heart")
+	const [voices, setVoices] = useState<Record<string, Voice>>({})
 
-	const [isListening, setIsListening] = useState(false);
-	const [isSpeaking, setIsSpeaking] = useState(false);
-	const [listeningScale, setListeningScale] = useState(1);
-	const [speakingScale, setSpeakingScale] = useState(1);
-	const [ripples, setRipples] = useState<number[]>([]);
+	const [isListening, setIsListening] = useState(false)
+	const [isSpeaking, setIsSpeaking] = useState(false)
+	const [listeningScale, setListeningScale] = useState(1)
+	const [speakingScale, setSpeakingScale] = useState(1)
+	const [ripples, setRipples] = useState<number[]>([])
 
-	const [ready, setReady] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	const [elapsedTime, setElapsedTime] = useState("00:00");
-	const worker = useRef<Worker | null>(null);
+	const [ready, setReady] = useState(false)
+	const [error, setError] = useState<string | null>(null)
+	const [elapsedTime, setElapsedTime] = useState("00:00")
+	const worker = useRef<Worker | null>(null)
 
-	const micStreamRef = useRef<MediaStream | null>(null);
-	const node = useRef<AudioWorkletNode | null>(null);
+	const micStreamRef = useRef<MediaStream | null>(null)
+	const node = useRef<AudioWorkletNode | null>(null)
 
 	useEffect(() => {
 		worker.current?.postMessage({
 			type: "set_voice",
 			voice,
-		});
-	}, [voice]);
+		})
+	}, [voice])
 
 	useEffect(() => {
 		if (!callStarted) {
 			// Reset worker state after call ends
 			worker.current?.postMessage({
 				type: "end_call",
-			});
+			})
 		}
-	}, [callStarted]);
+	}, [callStarted])
 
 	useEffect(() => {
 		if (callStarted && callStartTime) {
 			const interval = setInterval(() => {
-				const diff = Math.floor((Date.now() - callStartTime) / 1000);
-				const minutes = String(Math.floor(diff / 60)).padStart(2, "0");
-				const seconds = String(diff % 60).padStart(2, "0");
-				setElapsedTime(`${minutes}:${seconds}`);
-			}, 1000);
-			return () => clearInterval(interval);
+				const diff = Math.floor((Date.now() - callStartTime) / 1000)
+				const minutes = String(Math.floor(diff / 60)).padStart(2, "0")
+				const seconds = String(diff % 60).padStart(2, "0")
+				setElapsedTime(`${minutes}:${seconds}`)
+			}, 1000)
+			return () => clearInterval(interval)
 		}
 
 		// Begin
-		setElapsedTime("00:00");
-	}, [callStarted, callStartTime]);
+		setElapsedTime("00:00")
+	}, [callStarted, callStartTime])
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: one-time initialization
 	useEffect(() => {
 		worker.current ??= new Worker(new URL("./worker.js", import.meta.url), {
 			type: "module",
-		});
+		})
 
 		const onMessage = ({ data }: { data: WorkerMessage }) => {
 			if (data.error) {
-				return setError(data.error.message);
+				return setError(data.error.message)
 			}
 
 			switch (data.type) {
 				case "status":
 					if (data.status === "recording_start") {
-						setIsListening(true);
-						setIsSpeaking(false);
+						setIsListening(true)
+						setIsSpeaking(false)
 					} else if (data.status === "recording_end") {
-						setIsListening(false);
+						setIsListening(false)
 					} else if (data.status === "ready") {
-						setVoices(data.voices || {});
-						setReady(true);
+						setVoices(data.voices || {})
+						setReady(true)
 					}
-					break;
+					break
 				case "input":
-					console.log("input", data);
-					break;
+					console.log("input", data)
+					break
 				case "output":
 					if (!playing && data.result?.audio) {
-						node.current?.port.postMessage(data.result.audio);
-						setPlaying(true);
-						setIsSpeaking(true);
-						setIsListening(false);
+						node.current?.port.postMessage(data.result.audio)
+						setPlaying(true)
+						setIsSpeaking(true)
+						setIsListening(false)
 					}
-					break;
+					break
 			}
-		};
-		const onError = (ev: ErrorEvent) => setError(ev.message);
+		}
+		const onError = (ev: ErrorEvent) => setError(ev.message)
 
-		worker.current.addEventListener("message", onMessage);
-		worker.current.addEventListener("error", onError);
+		worker.current.addEventListener("message", onMessage)
+		worker.current.addEventListener("error", onError)
 
 		return () => {
-			worker.current?.removeEventListener("message", onMessage);
-			worker.current?.removeEventListener("error", onError);
-		};
-	}, []);
+			worker.current?.removeEventListener("message", onMessage)
+			worker.current?.removeEventListener("error", onError)
+		}
+	}, [])
 
 	useEffect(() => {
-		if (!callStarted) return;
+		if (!callStarted) return
 
-		let worklet: AudioWorkletNode | undefined;
-		let inputAudioContext: AudioContext | undefined;
-		let source: MediaStreamAudioSourceNode | undefined;
-		let ignore = false;
+		let worklet: AudioWorkletNode | undefined
+		let inputAudioContext: AudioContext | undefined
+		let source: MediaStreamAudioSourceNode | undefined
+		let ignore = false
 
-		let outputAudioContext: AudioContext | undefined;
-		const audioStreamPromise = Promise.resolve(micStreamRef.current);
+		let outputAudioContext: AudioContext | undefined
+		const audioStreamPromise = Promise.resolve(micStreamRef.current)
 
 		audioStreamPromise
 			.then(async (stream) => {
-				if (ignore) return;
-				if (!stream) throw new Error("No stream provided");
+				if (ignore) return
+				if (!stream) throw new Error("No stream provided")
 
 				const AudioContext =
 					"webkitAudioContext" in window
 						? (window.webkitAudioContext as typeof window.AudioContext)
-						: window.AudioContext;
+						: window.AudioContext
 
-				inputAudioContext = new AudioContext({ sampleRate: INPUT_SAMPLE_RATE });
+				inputAudioContext = new AudioContext({ sampleRate: INPUT_SAMPLE_RATE })
 
-				const analyser = inputAudioContext.createAnalyser();
-				analyser.fftSize = 256;
-				source = inputAudioContext.createMediaStreamSource(stream);
-				source.connect(analyser);
+				const analyser = inputAudioContext.createAnalyser()
+				analyser.fftSize = 256
+				source = inputAudioContext.createMediaStreamSource(stream)
+				source.connect(analyser)
 
-				const inputDataArray = new Uint8Array(analyser.frequencyBinCount);
+				const inputDataArray = new Uint8Array(analyser.frequencyBinCount)
 
 				function calculateRMS(array: Uint8Array) {
-					let sum = 0;
+					let sum = 0
 					for (let i = 0; i < array.length; ++i) {
-						const normalized = array[i] / 128 - 1;
-						sum += normalized * normalized;
+						const normalized = array[i] / 128 - 1
+						sum += normalized * normalized
 					}
-					const rms = Math.sqrt(sum / array.length);
-					return rms;
+					const rms = Math.sqrt(sum / array.length)
+					return rms
 				}
 
 				await inputAudioContext.audioWorklet.addModule(
 					new URL("./vad-processor.js", import.meta.url),
-				);
+				)
 				worklet = new AudioWorkletNode(inputAudioContext, "vad-processor", {
 					numberOfInputs: 1,
 					numberOfOutputs: 0,
 					channelCount: 1,
 					channelCountMode: "explicit",
 					channelInterpretation: "discrete",
-				});
+				})
 
-				source.connect(worklet);
+				source.connect(worklet)
 				worklet.port.onmessage = (event: MessageEvent) => {
-					const { buffer } = event.data;
-					worker.current?.postMessage({ type: "audio", buffer });
-				};
+					const { buffer } = event.data
+					worker.current?.postMessage({ type: "audio", buffer })
+				}
 
 				outputAudioContext = new AudioContext({
 					sampleRate: 24000,
-				});
-				outputAudioContext.resume();
+				})
+				outputAudioContext.resume()
 
 				const blob = new Blob([`(${WORKLET.toString()})()`], {
 					type: "application/javascript",
-				});
-				const url = URL.createObjectURL(blob);
-				await outputAudioContext.audioWorklet.addModule(url);
-				URL.revokeObjectURL(url);
+				})
+				const url = URL.createObjectURL(blob)
+				await outputAudioContext.audioWorklet.addModule(url)
+				URL.revokeObjectURL(url)
 
 				node.current = new AudioWorkletNode(
 					outputAudioContext,
 					"buffered-audio-worklet-processor",
-				);
+				)
 
 				node.current.port.onmessage = (event: MessageEvent) => {
 					if (event.data.type === "playback_ended") {
-						setPlaying(false);
-						setIsSpeaking(false);
-						worker.current?.postMessage({ type: "playback_ended" });
+						setPlaying(false)
+						setIsSpeaking(false)
+						worker.current?.postMessage({ type: "playback_ended" })
 					}
-				};
+				}
 
-				const outputAnalyser = outputAudioContext.createAnalyser();
-				outputAnalyser.fftSize = 256;
+				const outputAnalyser = outputAudioContext.createAnalyser()
+				outputAnalyser.fftSize = 256
 
-				node.current.connect(outputAnalyser);
-				outputAnalyser.connect(outputAudioContext.destination);
+				node.current.connect(outputAnalyser)
+				outputAnalyser.connect(outputAudioContext.destination)
 
-				const outputDataArray = new Uint8Array(
-					outputAnalyser.frequencyBinCount,
-				);
+				const outputDataArray = new Uint8Array(outputAnalyser.frequencyBinCount)
 
 				function updateVisualizers() {
-					analyser.getByteTimeDomainData(inputDataArray);
-					const rms = calculateRMS(inputDataArray);
-					const targetScale = 1 + Math.min(1.25 * rms, 0.25);
-					setListeningScale((prev) => prev + (targetScale - prev) * 0.25);
+					analyser.getByteTimeDomainData(inputDataArray)
+					const rms = calculateRMS(inputDataArray)
+					const targetScale = 1 + Math.min(1.25 * rms, 0.25)
+					setListeningScale((prev) => prev + (targetScale - prev) * 0.25)
 
-					outputAnalyser.getByteTimeDomainData(outputDataArray);
-					const outputRMS = calculateRMS(outputDataArray);
-					const targetOutputScale = 1 + Math.min(1.25 * outputRMS, 0.25);
-					setSpeakingScale((prev) => prev + (targetOutputScale - prev) * 0.25);
+					outputAnalyser.getByteTimeDomainData(outputDataArray)
+					const outputRMS = calculateRMS(outputDataArray)
+					const targetOutputScale = 1 + Math.min(1.25 * outputRMS, 0.25)
+					setSpeakingScale((prev) => prev + (targetOutputScale - prev) * 0.25)
 
-					requestAnimationFrame(updateVisualizers);
+					requestAnimationFrame(updateVisualizers)
 				}
-				updateVisualizers();
+				updateVisualizers()
 			})
 			.catch((err) => {
-				setError(err.message);
-				console.error(err);
-			});
+				setError(err.message)
+				console.error(err)
+			})
 
 		return () => {
-			ignore = true;
+			ignore = true
 			audioStreamPromise.then((s) => {
-				const tracks = s?.getTracks();
-				if (!tracks) return;
+				const tracks = s?.getTracks()
+				if (!tracks) return
 				for (const track of tracks) {
-					track.stop();
+					track.stop()
 				}
-			});
-			source?.disconnect();
-			worklet?.disconnect();
-			inputAudioContext?.close();
+			})
+			source?.disconnect()
+			worklet?.disconnect()
+			inputAudioContext?.close()
 
-			outputAudioContext?.close();
-		};
-	}, [callStarted]);
+			outputAudioContext?.close()
+		}
+	}, [callStarted])
 
 	useEffect(() => {
-		if (!callStarted) return;
+		if (!callStarted) return
 		const interval = setInterval(() => {
-			const id = Date.now();
-			setRipples((prev) => [...prev, id]);
+			const id = Date.now()
+			setRipples((prev) => [...prev, id])
 			setTimeout(() => {
-				setRipples((prev) => prev.filter((r) => r !== id));
-			}, 1500);
-		}, 1000);
-		return () => clearInterval(interval);
-	}, [callStarted]);
+				setRipples((prev) => prev.filter((r) => r !== id))
+			}, 1500)
+		}, 1000)
+		return () => clearInterval(interval)
+	}, [callStarted])
 
 	const handleStartCall = async () => {
 		try {
@@ -286,17 +279,17 @@ export default function App() {
 					noiseSuppression: true,
 					sampleRate: INPUT_SAMPLE_RATE,
 				},
-			});
-			micStreamRef.current = stream;
+			})
+			micStreamRef.current = stream
 
-			setCallStartTime(Date.now());
-			setCallStarted(true);
-			worker.current?.postMessage({ type: "start_call" });
+			setCallStartTime(Date.now())
+			setCallStarted(true)
+			worker.current?.postMessage({ type: "start_call" })
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
-			console.error(err);
+			setError(err instanceof Error ? err.message : String(err))
+			console.error(err)
 		}
-	};
+	}
 
 	return (
 		<div className="h-screen min-h-[240px] flex items-center justify-center bg-gray-50 p-4 relative">
@@ -376,11 +369,11 @@ export default function App() {
 					{callStarted ? (
 						<Button
 							onClick={() => {
-								setCallStarted(false);
-								setCallStartTime(null);
-								setPlaying(false);
-								setIsListening(false);
-								setIsSpeaking(false);
+								setCallStarted(false)
+								setCallStartTime(null)
+								setPlaying(false)
+								setIsListening(false)
+								setIsSpeaking(false)
 							}}
 						>
 							<PhoneOff className="w-5 h-5" />
@@ -400,5 +393,5 @@ export default function App() {
 				</div>
 			</div>
 		</div>
-	);
+	)
 }
