@@ -10,6 +10,8 @@ import {
 	Tensor,
 	pipeline,
 	PretrainedConfig,
+	StoppingCriteriaList,
+	type Message,
 } from "@huggingface/transformers";
 
 // @ts-ignore - Module resolution issue with kokoro-js
@@ -144,7 +146,7 @@ async function detectDevice(): Promise<"webgpu" | "wasm"> {
 	};
 	await llm.generate({ ...tokenizer("x"), max_new_tokens: 1 }); // Compile shaders
 
-	let messages: Array<{ role: string; content: string }> = [SYSTEM_MESSAGE];
+	let messages: Message[] = [SYSTEM_MESSAGE];
 	let past_key_values_cache: PastKeyValues | null = null;
 	let stopping_criteria: InterruptableStoppingCriteria | undefined;
 	self.postMessage({
@@ -194,6 +196,44 @@ async function detectDevice(): Promise<"webgpu" | "wasm"> {
 		);
 	}
 
+	type GenerationFunctionParameters = Parameters<typeof llm.generate>[0];
+	type GenerationFunctionKeywordArgs = {
+		input_ids: Tensor;
+		attention_mask: number[] | number[][] | Tensor;
+		token_type_ids?: number[] | number[][] | Tensor;
+		past_key_values: null | object;
+		do_sample: boolean;
+		max_new_tokens: number;
+		return_dict_in_generate: boolean;
+	};
+
+	const customGenerate = async (
+		params: GenerationFunctionParameters & GenerationFunctionKeywordArgs,
+	) => (await llm.generate(params)) as GenerationObjectOutput;
+
+	const getTokenizerInputs = (messages: Message[]) => {
+		const inputs = tokenizer.apply_chat_template(messages, {
+			add_generation_prompt: true,
+			return_dict: true,
+		});
+
+		if (!(typeof inputs === "object"))
+			throw new Error("Tokenizer inputs are not an object");
+		if (!("input_ids" in inputs)) throw new Error("input_ids not in inputs");
+
+		const { input_ids, attention_mask } = inputs;
+
+		if (!(input_ids instanceof Tensor))
+			throw new Error("input_ids not a tensor");
+		if (!(attention_mask instanceof Tensor))
+			throw new Error("attention_mask not a tensor");
+
+		return {
+			input_ids,
+			attention_mask,
+		};
+	};
+
 	/**
 	 * Transcribe the audio buffer
 	 * @param {Float32Array} buffer The audio buffer
@@ -211,7 +251,7 @@ async function detectDevice(): Promise<"webgpu" | "wasm"> {
 		console.log({ result });
 		const text: string = Array.isArray(result)
 			? result[0]?.text?.trim() || ""
-			: (result as any)?.text?.trim() || "";
+			: result?.text?.trim() || "";
 		if (["", "[BLANK_AUDIO]"].includes(text)) {
 			// If the transcription is empty or a blank audio, we skip the rest of the processing
 			console.log("skip blank audio");
@@ -233,10 +273,8 @@ async function detectDevice(): Promise<"webgpu" | "wasm"> {
 		})();
 
 		// 2. Generate a response using the LLM
-		const inputs = tokenizer.apply_chat_template(messages, {
-			add_generation_prompt: true,
-			return_dict: true,
-		}) as any;
+		const { input_ids, attention_mask } = getTokenizerInputs(messages);
+
 		const streamer = new TextStreamer(tokenizer, {
 			skip_prompt: true,
 			skip_special_tokens: true,
@@ -247,17 +285,21 @@ async function detectDevice(): Promise<"webgpu" | "wasm"> {
 		});
 
 		stopping_criteria = new InterruptableStoppingCriteria();
-		const { past_key_values, sequences } = (await llm.generate({
-			...inputs,
-			past_key_values: past_key_values_cache,
+		const stopping_criteria_list = new StoppingCriteriaList();
+		stopping_criteria_list.push(stopping_criteria);
 
-			do_sample: false, // TODO: do_sample: true is bugged (invalid data location on topk sample)
-			max_new_tokens: 1024,
+		const { past_key_values, sequences } = await customGenerate({
+			input_ids,
+			attention_mask,
 			streamer,
-			stopping_criteria,
+
+			past_key_values: past_key_values_cache,
+			do_sample: false, // TODO: do_sample: true is bugged (invalid data location on topk sample)
+			stopping_criteria: stopping_criteria_list,
+			max_new_tokens: 1024,
 			// Causes return value to be an object with past_key_values and sequences
 			return_dict_in_generate: true,
-		})) as GenerationObjectOutput;
+		});
 
 		past_key_values_cache = past_key_values;
 
@@ -265,7 +307,10 @@ async function detectDevice(): Promise<"webgpu" | "wasm"> {
 		splitter.close();
 
 		const decoded = tokenizer.batch_decode(
-			sequences.slice(null, [(inputs as any).input_ids.dims[1], null]),
+			sequences.slice(null, [
+				input_ids.dims[1],
+				null /* ugh, the transformer.js types are wrong: null means 'take the whole dimension' */ as unknown as number,
+			]),
 			{ skip_special_tokens: true },
 		);
 
