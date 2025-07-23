@@ -12,6 +12,7 @@ import {
 	Tensor,
 	TextStreamer,
 	type Message,
+	env as trEnv,
 } from "@huggingface/transformers"
 
 // @ts-ignore - Module resolution issue with kokoro-js
@@ -27,6 +28,11 @@ import {
 	SPEECH_PAD_SAMPLES,
 	SPEECH_THRESHOLD,
 } from "./constants"
+
+// trEnv.wasmPaths = {
+//   wasm: chrome.runtime.getURL("onnx/ort-wasm-simd-threaded.jsep.wasm"),
+//   mjs: chrome.runtime.getURL("onnx/ort-wasm-simd-threaded.jsep.mjs"),
+// };
 
 // biome-ignore lint/suspicious/noExplicitAny: transformers.js doesn't provide type for past_key_values values
 type PastKeyValues = Record<string, any>
@@ -66,6 +72,10 @@ async function detectDevice(): Promise<"webgpu" | "wasm"> {
 }
 
 ;(async (): Promise<void> => {
+	// Configure transformers.js for offline usage
+	trEnv.allowRemoteModels = false;
+	trEnv.allowLocalModels = true;
+	
 	const device = await detectDevice()
 	self.postMessage({ type: "info", message: `Using device: "${device}"` })
 

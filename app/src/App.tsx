@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react"
 import { PhoneOff, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { INPUT_SAMPLE_RATE } from "./constants"
+import { INPUT_SAMPLE_RATE } from "./constants.js"
 
 import WORKLET from "./play-worklet.js"
 import {
@@ -11,7 +11,7 @@ import {
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
 	DropdownMenuPortal,
-} from "./components/ui/dropdown-menu"
+} from "./components/ui/dropdown-menu.js"
 
 // Type definitions
 interface Voice {
