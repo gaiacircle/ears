@@ -1,10 +1,8 @@
-import { SPEECH_PAD_SAMPLES } from "../constants"
 import {
 	handleAudioChunk,
 	initAutomaticSpeechRecognition,
 	prepareAudioForTranscription,
 	resetAsrState,
-	resetAudioBuffer,
 	transcribe,
 } from "./automatic-speech-recognition"
 import type { FromWorkerMessage } from "./types"
@@ -34,42 +32,27 @@ const worker = async (): Promise<void> => {
 		voices: {},
 	})
 
-	// Whether we are in the process of adding audio to the buffer
-	let isRecording = false
-
-	// Track the number of samples after the last speech chunk
 	const resetAfterRecording = (): void => {
-		// This function should now reset the ASR state by calling the new resetAsrState function.
-		// asr = resetAsrState(asr);
 		postMessage({
 			type: "recording-end",
 			message: "Transcribing...",
 		})
 		asr = resetAsrState(asr)
-		isRecording = false
 	}
 
-	const dispatchTranscription = (overflow?: Float32Array): void => {
-		const speechBuffer: Float32Array = asr.audioBuffer.slice(
-			0,
-			asr.bufferPointer + SPEECH_PAD_SAMPLES,
-		)
-
-		const audioForTranscription = prepareAudioForTranscription(
-			asr,
-			speechBuffer,
-		)
+	const dispatchTranscription = (): void => {
+		const audioForTranscription = prepareAudioForTranscription(asr.activeRecordingQueue)
 
 		transcribe(asr, audioForTranscription).then((text: string) => {
 			if (!text) {
 				// If the transcription is empty or a blank audio, we skip the rest of the processing
 				console.log("skip blank audio")
+			} else {
+				postMessage({ type: "input", text })
 			}
-
-			postMessage({ type: "input", text })
 		})
 
-		asr = resetAudioBuffer(asr, overflow)
+		asr = resetAsrState(asr)
 		resetAfterRecording()
 	}
 
@@ -89,15 +72,10 @@ const worker = async (): Promise<void> => {
 					const isSpeech: boolean = await detectVoiceActivity(
 						vad,
 						buffer,
-						isRecording,
+						asr.activeRecordingQueue.length > 0,
 					)
 
-					const { updatedAsr, action } = handleAudioChunk(
-						asr,
-						buffer,
-						isSpeech,
-						isRecording,
-					)
+					const { updatedAsr, action } = handleAudioChunk(asr, buffer, isSpeech)
 					asr = updatedAsr
 
 					switch (action.type) {
@@ -110,11 +88,11 @@ const worker = async (): Promise<void> => {
 								type: "recording-start",
 								message: "Listening...",
 							})
-							isRecording = true
 							break
 						case "disptch-transcription":
-							dispatchTranscription(action.overflow)
-							asr = resetAudioBuffer(asr, action.overflow)
+							dispatchTranscription()
+							// After transcription, if there's overflow, it becomes the new currentChunks
+							asr = { ...asr, activeRecordingQueue: action.overflow, preRollQueue: [] }
 							break
 						case "discard-recording":
 							resetAfterRecording()

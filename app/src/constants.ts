@@ -43,11 +43,9 @@ export const MAX_BUFFER_DURATION: number = 30
 /**
  * Size of the incoming buffers
  */
-export const NEW_BUFFER_SIZE: number = 512
+export const AUDIO_CHUNK_SIZE: number = 512
 
 /**
- * The number of previous buffers to keep, to ensure the audio is padded correctly
+ * The number of pre-roll audio chunks to keep, to ensure beginning audio isn't clipped
  */
-export const MAX_NUM_PREV_BUFFERS: number = Math.ceil(
-	SPEECH_PAD_SAMPLES / NEW_BUFFER_SIZE,
-)
+export const MAX_PRE_ROLL_QUEUE_SIZE: number = 10

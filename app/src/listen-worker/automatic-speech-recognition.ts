@@ -6,18 +6,21 @@ import {
 import {
 	INPUT_SAMPLE_RATE,
 	MAX_BUFFER_DURATION,
-	MAX_NUM_PREV_BUFFERS,
+	MAX_PRE_ROLL_QUEUE_SIZE,
 	MIN_SILENCE_DURATION_SAMPLES,
 	MIN_SPEECH_DURATION_SAMPLES,
 } from "../constants"
 import { DEVICE_DTYPE_CONFIGS, detectDevice } from "../lib/detect-device"
 
+type AudioChunk = {
+	buffer: Float32Array
+	isSpeech: boolean
+}
+
 export type AutomaticSpeechRecognition = {
 	transcriber: AutomaticSpeechRecognitionPipeline
-	audioBuffer: Float32Array
-	bufferPointer: number
-	prevBuffers: Float32Array[]
-	postSpeechSamples: number
+	preRollQueue: AudioChunk[]
+	activeRecordingQueue: AudioChunk[]
 }
 
 export type WorkerAction =
@@ -26,7 +29,7 @@ export type WorkerAction =
 	| { type: "continue-recording" }
 	| {
 			type: "disptch-transcription"
-			overflow: Float32Array
+			overflow: AudioChunk[]
 	  }
 	| { type: "discard-recording" }
 
@@ -45,18 +48,10 @@ export async function initAutomaticSpeechRecognition(): Promise<AutomaticSpeechR
 
 	await transcriber(new Float32Array(INPUT_SAMPLE_RATE)) // Compile shaders
 
-	// Global audio buffer to store incoming audio
-	const audioBuffer: Float32Array = new Float32Array(
-		MAX_BUFFER_DURATION * INPUT_SAMPLE_RATE,
-	)
-	const bufferPointer = 0
-
 	return {
 		transcriber,
-		audioBuffer,
-		bufferPointer,
-		prevBuffers: [],
-		postSpeechSamples: 0,
+		preRollQueue: [],
+		activeRecordingQueue: [],
 	}
 }
 
@@ -64,118 +59,118 @@ export function handleAudioChunk(
 	asr: AutomaticSpeechRecognition,
 	buffer: Float32Array,
 	isSpeech: boolean,
-	isRecording: boolean,
 ): { updatedAsr: AutomaticSpeechRecognition; action: WorkerAction } {
-	// Not recording and no speech in buffer -> queue for possible future use
+	const isRecording = asr.activeRecordingQueue.length > 0
+	const newChunk: AudioChunk = { buffer, isSpeech }
+
+	// Not recording and no speech in chunk -> queue for possible future use
 	if (!isRecording && !isSpeech) {
-		const newPrevBuffers = [...asr.prevBuffers, buffer]
-		if (newPrevBuffers.length > MAX_NUM_PREV_BUFFERS) {
-			newPrevBuffers.shift()
+		const preRollQueue = [...asr.preRollQueue, newChunk]
+		if (preRollQueue.length > MAX_PRE_ROLL_QUEUE_SIZE) {
+			console.log("shift pre-roll", preRollQueue.length)
+			preRollQueue.shift()
 		}
 		return {
-			updatedAsr: { ...asr, prevBuffers: newPrevBuffers },
+			updatedAsr: { ...asr, preRollQueue: preRollQueue },
 			action: { type: "enqueue-prev-buffer" },
 		}
 	}
 
-	// From here, we are either recording, or we just got a speech buffer.
-	const newAudioBuffer = asr.audioBuffer.slice()
-	let newBufferPointer = asr.bufferPointer
+	// From here, we are either recording, or we just got a speech chunk.
+	const newCurrentChunks = [...asr.activeRecordingQueue]
+	let newPrevChunks = [...asr.preRollQueue]
+	const actionType: WorkerAction["type"] = !isRecording
+		? "start-recording"
+		: "continue-recording"
+
+	if (actionType === "start-recording") {
+		// Move all previous chunks to the current chunks
+		newCurrentChunks.push(...newPrevChunks, newChunk)
+		newPrevChunks = []
+	} else {
+		newCurrentChunks.push(newChunk)
+	}
+
+	const totalSampleLength = measureSampleLength(newCurrentChunks)
 
 	// Buffer overflow case -> dispatch for transcription
-	const remaining: number = newAudioBuffer.length - newBufferPointer
-	if (buffer.length >= remaining) {
-		newAudioBuffer.set(buffer.subarray(0, remaining), newBufferPointer)
-		newBufferPointer += remaining
-		const overflow: Float32Array = buffer.subarray(remaining)
-		const updatedAsr = {
-			...asr,
-			audioBuffer: newAudioBuffer,
-			bufferPointer: newBufferPointer,
+	if (totalSampleLength > MAX_BUFFER_DURATION * INPUT_SAMPLE_RATE) {
+		const overflow: AudioChunk[] = []
+		let currentSize = 0
+		const chunksForTranscription: AudioChunk[] = []
+		for (const chunk of newCurrentChunks) {
+			if (
+				currentSize + chunk.buffer.length >
+				MAX_BUFFER_DURATION * INPUT_SAMPLE_RATE
+			) {
+				overflow.push(chunk)
+			} else {
+				chunksForTranscription.push(chunk)
+				currentSize += chunk.buffer.length
+			}
 		}
+
 		return {
-			updatedAsr,
+			updatedAsr: { ...asr, activeRecordingQueue: chunksForTranscription },
 			action: { type: "disptch-transcription", overflow },
 		}
 	}
 
-	// Default case -> copy buffer to main audio buffer
-	newAudioBuffer.set(buffer, newBufferPointer)
-	newBufferPointer += buffer.length
-
-	let updatedAsr = {
-		...asr,
-		audioBuffer: newAudioBuffer,
-		bufferPointer: newBufferPointer,
-	}
-
+	// If speech, continue recording and reset silence counter (implicitly)
 	if (isSpeech) {
-		// New recording, or continuing recording
-		const actionType = !isRecording ? "start-recording" : "continue-recording"
-		updatedAsr = { ...updatedAsr, postSpeechSamples: 0 } // Reset silence counter
 		return {
-			updatedAsr,
+			updatedAsr: {
+				...asr,
+				activeRecordingQueue: newCurrentChunks,
+				preRollQueue: newPrevChunks,
+			},
 			action: { type: actionType },
 		}
 	}
 
 	// Not speech, but we were recording. Check for end of speech.
-	const newPostSpeechSamples = asr.postSpeechSamples + buffer.length
-	updatedAsr = { ...updatedAsr, postSpeechSamples: newPostSpeechSamples }
+	let silenceDuration = 0
+	for (let i = newCurrentChunks.length - 1; i >= 0; i--) {
+		const chunk = newCurrentChunks[i]
+		if (chunk.isSpeech) {
+			break
+		}
+		silenceDuration += chunk.buffer.length
+	}
 
-	if (newPostSpeechSamples < MIN_SILENCE_DURATION_SAMPLES) {
+	if (silenceDuration < MIN_SILENCE_DURATION_SAMPLES) {
 		// Not enough silence yet, continue recording
 		return {
-			updatedAsr,
+			updatedAsr: {
+				...asr,
+				activeRecordingQueue: newCurrentChunks,
+				preRollQueue: newPrevChunks,
+			},
 			action: { type: "continue-recording" },
 		}
 	}
 
 	// Enough silence has passed. Decide whether to dispatch or discard.
-	// We need to check if the buffer is long enough to be considered speech.
-	if (updatedAsr.bufferPointer < MIN_SPEECH_DURATION_SAMPLES) {
+	const speechDuration = newCurrentChunks.reduce(
+		(sum, chunk) => sum + (chunk.isSpeech ? chunk.buffer.length : 0),
+		0,
+	)
+
+	if (speechDuration < MIN_SPEECH_DURATION_SAMPLES) {
 		// Speech too short, discard.
 		return {
-			updatedAsr, // state will be reset in worker
+			updatedAsr: { ...asr, activeRecordingQueue: [], preRollQueue: [] },
 			action: { type: "discard-recording" },
 		}
 	}
 
 	// Speech is long enough and silence has been detected, so dispatch.
-	// We have to create a new Float32Array for the overflow, since we don't have one in this case.
-	const overflow = new Float32Array(0)
 	return {
-		updatedAsr,
+		updatedAsr: { ...asr, activeRecordingQueue: newCurrentChunks },
 		action: {
 			type: "disptch-transcription",
-			overflow,
+			overflow: [],
 		},
-	}
-}
-
-export function resetAudioBuffer(
-	asr: AutomaticSpeechRecognition,
-	overflow: Float32Array = new Float32Array(0),
-): AutomaticSpeechRecognition {
-	const allPrev = asr.prevBuffers.reduce((acc, val) => {
-		const newAcc = new Float32Array(acc.length + val.length)
-		newAcc.set(acc)
-		newAcc.set(val, acc.length)
-		return newAcc
-	}, new Float32Array(0))
-
-	const dataToCopy = new Float32Array(allPrev.length + overflow.length)
-	dataToCopy.set(allPrev)
-	dataToCopy.set(overflow, allPrev.length)
-
-	const newAudioBuffer = new Float32Array(asr.audioBuffer.length)
-	newAudioBuffer.set(dataToCopy)
-
-	return {
-		...asr,
-		audioBuffer: newAudioBuffer,
-		bufferPointer: dataToCopy.length,
-		prevBuffers: [], // Clear prevBuffers
 	}
 }
 
@@ -184,33 +179,25 @@ export function resetAsrState(
 ): AutomaticSpeechRecognition {
 	return {
 		...asr,
-		bufferPointer: 0,
-		postSpeechSamples: 0,
-		prevBuffers: [],
+		preRollQueue: [],
+		activeRecordingQueue: [],
 	}
 }
 export function prepareAudioForTranscription(
-	asr: AutomaticSpeechRecognition,
-	speechBuffer: Float32Array,
+	chunks: AudioChunk[],
 ): Float32Array {
-	const prevLength = asr.prevBuffers.reduce(
-		(sum, buf) => sum + buf.length,
-		0,
-	)
-	const audioForTranscription = new Float32Array(
-		prevLength + speechBuffer.length,
-	)
+	const totalSampleLength = measureSampleLength(chunks)
+
+	const audioForTranscription = new Float32Array(totalSampleLength)
 
 	let offset = 0
-	for (const prev of asr.prevBuffers) {
-		audioForTranscription.set(prev, offset)
-		offset += prev.length
+	for (const chunk of chunks) {
+		audioForTranscription.set(chunk.buffer, offset)
+		offset += chunk.buffer.length
 	}
-	audioForTranscription.set(speechBuffer, offset)
 
 	return audioForTranscription
 }
-
 
 /**
  * Transcribe the audio buffer
@@ -232,4 +219,8 @@ export async function transcribe(
 	}
 
 	return text
+}
+
+function measureSampleLength(chunks: AudioChunk[]): number {
+	return chunks.reduce((sum, chunk) => sum + chunk.buffer.length, 0)
 }
