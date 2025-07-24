@@ -13,6 +13,8 @@ import {
 	TextStreamer,
 	type Message,
 	env as trEnv,
+	PreTrainedModel,
+	AutomaticSpeechRecognitionPipeline,
 } from "@huggingface/transformers"
 
 // @ts-ignore - Module resolution issue with kokoro
@@ -28,32 +30,14 @@ import {
 	SPEECH_PAD_SAMPLES,
 	SPEECH_THRESHOLD,
 } from "./constants"
-import { detectDevice } from "./lib/detect"
 
-// trEnv.wasmPaths = {
-//   wasm: chrome.runtime.getURL("onnx/ort-wasm-simd-threaded.jsep.wasm"),
-//   mjs: chrome.runtime.getURL("onnx/ort-wasm-simd-threaded.jsep.mjs"),
-// };
-
-// biome-ignore lint/suspicious/noExplicitAny: transformers.js doesn't provide type for past_key_values values
-type PastKeyValues = Record<string, any>
-
-type GenerationObjectOutput = {
-	past_key_values: PastKeyValues
-	sequences: Tensor
-}
+import { detectDevice, DEVICE_DTYPE_CONFIGS } from "./lib/detect"
 
 ;(async (): Promise<void> => {
-	const device = await detectDevice()
-	self.postMessage({ type: "info", message: `Using device: "${device}"` })
+	const prevBuffers: Float32Array[] = []
 
-	const model_id = "onnx-community/Kokoro-82M-v1.0-ONNX"
-	type VoiceKey = keyof typeof tts.voices
-	let voice: VoiceKey | undefined
-	const tts = await KokoroTTS.from_pretrained(model_id, {
-		dtype: "fp32",
-		device,
-	})
+	const device = await detectDevice()
+
 	self.postMessage({
 		type: "info",
 		message: "Loading models...",
@@ -61,77 +45,43 @@ type GenerationObjectOutput = {
 	})
 
 	// Load models
-	const silero_vad = await AutoModel.from_pretrained(
-		"onnx-community/silero-vad",
-		{
-			config: new PretrainedConfig({ model_type: "custom" }),
-			dtype: "fp32", // Full-precision
-		},
-	).catch((error) => {
+	let voiceActivity: PreTrainedModel
+	try {
+		voiceActivity = await AutoModel.from_pretrained(
+			"onnx-community/silero-vad",
+			{
+				config: new PretrainedConfig({ model_type: "custom" }),
+				dtype: "fp32", // Full-precision
+			},
+		)
+	} catch (error) {
 		self.postMessage({ error })
 		throw error
-	})
-
-	type DtypeConfig =
-		| "auto"
-		| "fp32"
-		| "fp16"
-		| "q4"
-		| "q8"
-		| "int8"
-		| "uint8"
-		| "bnb4"
-		| "q4f16"
-
-	const DEVICE_DTYPE_CONFIGS: Record<
-		string,
-		{ encoder_model: DtypeConfig; decoder_model_merged: DtypeConfig }
-	> = {
-		webgpu: {
-			encoder_model: "fp32",
-			decoder_model_merged: "fp32",
-		},
-		wasm: {
-			encoder_model: "fp32",
-			decoder_model_merged: "q8",
-		},
 	}
-	const transcriber = await pipeline(
-		"automatic-speech-recognition",
-		"onnx-community/whisper-base", // or "onnx-community/moonshine-base-ONNX",
-		{
-			device,
-			dtype: DEVICE_DTYPE_CONFIGS[device as keyof typeof DEVICE_DTYPE_CONFIGS],
-		},
-	).catch((error) => {
+
+	let transcriber: AutomaticSpeechRecognitionPipeline
+	try {
+		transcriber = (await pipeline(
+			"automatic-speech-recognition",
+			"onnx-community/whisper-base",
+			{
+				device,
+				dtype:
+					DEVICE_DTYPE_CONFIGS[device as keyof typeof DEVICE_DTYPE_CONFIGS],
+			},
+		)) as any
+	} catch (error) {
 		self.postMessage({ error })
 		throw error
-	})
+	}
 
 	await transcriber(new Float32Array(INPUT_SAMPLE_RATE)) // Compile shaders
 
-	const llm_model_id = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
-	const tokenizer = await AutoTokenizer.from_pretrained(llm_model_id)
-	const llm = await AutoModelForCausalLM.from_pretrained(llm_model_id, {
-		dtype: "q4f16",
-		device,
-	})
-
-	const SYSTEM_MESSAGE = {
-		role: "system",
-		content:
-			"You're a helpful and conversational voice assistant. Keep your responses short, clear, and casual.",
-	}
-	await llm.generate({ ...tokenizer("x"), max_new_tokens: 1 }) // Compile shaders
-
-	let messages: Message[] = [SYSTEM_MESSAGE]
-	let past_key_values_cache: PastKeyValues | null = null
-	let stopping_criteria: InterruptableStoppingCriteria | undefined
 	self.postMessage({
 		type: "status",
 		status: "ready",
 		message: "Ready!",
-		voices: tts.voices,
+		voices: {},
 	})
 
 	// Global audio buffer to store incoming audio
@@ -150,7 +100,6 @@ type GenerationObjectOutput = {
 
 	// Whether we are in the process of adding audio to the buffer
 	let isRecording = false
-	let isPlaying = false // new flag
 
 	/**
 	 * Perform Voice Activity Detection (VAD)
@@ -160,7 +109,7 @@ type GenerationObjectOutput = {
 	async function vad(buffer: Float32Array): Promise<boolean> {
 		const input = new Tensor("float32", buffer, [1, buffer.length])
 
-		const { stateN, output } = await silero_vad({ input, sr, state })
+		const { stateN, output } = await voiceActivity({ input, sr, state })
 		state = stateN // Update state
 
 		const isSpeech: number = output.data[0] as number
@@ -174,125 +123,30 @@ type GenerationObjectOutput = {
 		)
 	}
 
-	type GenerationFunctionParameters = Parameters<typeof llm.generate>[0]
-	type GenerationFunctionKeywordArgs = {
-		input_ids: Tensor
-		attention_mask: number[] | number[][] | Tensor
-		token_type_ids?: number[] | number[][] | Tensor
-		past_key_values: null | object
-		do_sample: boolean
-		max_new_tokens: number
-		return_dict_in_generate: boolean
-	}
-
-	const customGenerate = async (
-		params: GenerationFunctionParameters & GenerationFunctionKeywordArgs,
-	) => (await llm.generate(params)) as GenerationObjectOutput
-
-	const getTokenizerInputs = (messages: Message[]) => {
-		const inputs = tokenizer.apply_chat_template(messages, {
-			add_generation_prompt: true,
-			return_dict: true,
-		})
-
-		if (!(typeof inputs === "object"))
-			throw new Error("Tokenizer inputs are not an object")
-		if (!("input_ids" in inputs)) throw new Error("input_ids not in inputs")
-
-		const { input_ids, attention_mask } = inputs
-
-		if (!(input_ids instanceof Tensor))
-			throw new Error("input_ids not a tensor")
-		if (!(attention_mask instanceof Tensor))
-			throw new Error("attention_mask not a tensor")
-
-		return {
-			input_ids,
-			attention_mask,
-		}
-	}
-
 	/**
 	 * Transcribe the audio buffer
 	 * @param {Float32Array} buffer The audio buffer
 	 * @param {Object} data Additional data
 	 */
-	const speechToSpeech = async (
-		buffer: Float32Array,
-		data: { start: number; end: number; duration: number },
-	): Promise<void> => {
-		isPlaying = true
+	const listen = async (buffer: Float32Array): Promise<void> => {
+		console.log("listen")
 
-		console.log("speechToSpeech")
 		// 1. Transcribe the audio from the user
 		const result = await transcriber(buffer)
 		console.log({ result })
+
 		const text: string = Array.isArray(result)
 			? result[0]?.text?.trim() || ""
 			: result?.text?.trim() || ""
+
 		if (["", "[BLANK_AUDIO]"].includes(text)) {
 			// If the transcription is empty or a blank audio, we skip the rest of the processing
 			console.log("skip blank audio")
 			return
 		}
-		messages.push({ role: "user", content: text })
+		// messages.push({ role: "user", content: text })
 
 		self.postMessage({ type: "input", text })
-
-		// Set up text-to-speech streaming
-		const splitter = new TextSplitterStream()
-		const stream = tts.stream(splitter, {
-			voice: voice as VoiceKey,
-		})
-		;(async () => {
-			for await (const { text, phonemes, audio } of stream) {
-				self.postMessage({ type: "output", text, result: audio })
-			}
-		})()
-
-		// 2. Generate a response using the LLM
-		const { input_ids, attention_mask } = getTokenizerInputs(messages)
-
-		const streamer = new TextStreamer(tokenizer, {
-			skip_prompt: true,
-			skip_special_tokens: true,
-			callback_function: (text) => {
-				splitter.push(text)
-			},
-			token_callback_function: () => {},
-		})
-
-		stopping_criteria = new InterruptableStoppingCriteria()
-		const stopping_criteria_list = new StoppingCriteriaList()
-		stopping_criteria_list.push(stopping_criteria)
-
-		const { past_key_values, sequences } = await customGenerate({
-			input_ids,
-			attention_mask,
-			streamer,
-
-			past_key_values: past_key_values_cache,
-			do_sample: false, // TODO: do_sample: true is bugged (invalid data location on topk sample)
-			stopping_criteria: stopping_criteria_list,
-			max_new_tokens: 1024,
-			// Causes return value to be an object with past_key_values and sequences
-			return_dict_in_generate: true,
-		})
-
-		past_key_values_cache = past_key_values
-
-		// Finally, close the stream to signal that no more text will be added.
-		splitter.close()
-
-		const decoded = tokenizer.batch_decode(
-			sequences.slice(null, [
-				input_ids.dims[1],
-				null /* ugh, the transformer.js types are wrong: null means 'take the whole dimension' */ as unknown as number,
-			]),
-			{ skip_special_tokens: true },
-		)
-
-		messages.push({ role: "assistant", content: decoded[0] })
 	}
 
 	// Track the number of samples after the last speech chunk
@@ -337,8 +191,10 @@ type GenerationObjectOutput = {
 			paddedBuffer.set(prev, offset)
 			offset += prev.length
 		}
+
 		paddedBuffer.set(buffer, offset)
-		speechToSpeech(paddedBuffer, { start, end, duration })
+
+		listen(paddedBuffer)
 
 		// Set overflow (if present) and reset the rest of the audio buffer
 		if (overflow) {
@@ -347,38 +203,28 @@ type GenerationObjectOutput = {
 		resetAfterRecording(overflowLength)
 	}
 
-	const prevBuffers: Float32Array[] = []
 	self.onmessage = async (event: MessageEvent): Promise<void> => {
 		const { type, buffer } = event.data
 
-		// refuse new audio while playing back
-		if (type === "audio" && isPlaying) return
-
+		console.log("message received in worker", type, event.data)
 		switch (type) {
-			case "start_call": {
-				// const voiceKey = (voice ?? "af_heart") as VoiceKey;
-				// const name: string = tts.voices[voiceKey]?.name ?? "Heart";
-				// say(`Hey there, my name is ${name}! How can I help you today?`);
+			case "start_call":
 				return
-			}
 			case "end_call":
-				messages = [SYSTEM_MESSAGE]
-				past_key_values_cache = null
-				stopping_criteria?.interrupt()
 				return
 			case "interrupt":
-				stopping_criteria?.interrupt()
 				return
 			case "set_voice":
-				voice = event.data.voice as VoiceKey
 				return
 			case "playback_ended":
-				isPlaying = false
 				return
+      // case "audio": {
+		  //   const isSpeech: boolean = await vad(buffer)
+      // }
 		}
 
 		const wasRecording: boolean = isRecording // Save current state
-		const isSpeech: boolean = await vad(buffer)
+		    const isSpeech: boolean = await vad(buffer)
 
 		if (!wasRecording && !isSpeech) {
 			// We are not recording, and the buffer is not speech,
@@ -444,19 +290,5 @@ type GenerationObjectOutput = {
 		}
 
 		dispatchForTranscriptionAndResetAudioBuffer()
-	}
-
-	function say(text: string): void {
-		isPlaying = true
-		const splitter = new TextSplitterStream()
-		const stream = tts.stream(splitter, { voice: voice as VoiceKey })
-		;(async () => {
-			for await (const { text: chunkText, audio } of stream) {
-				self.postMessage({ type: "output", text: chunkText, result: audio })
-			}
-		})()
-		splitter.push(text)
-		splitter.close()
-		messages.push({ role: "assistant", content: text })
 	}
 })()

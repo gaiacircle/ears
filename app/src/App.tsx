@@ -85,7 +85,7 @@ export default function App() {
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: one-time initialization
 	useEffect(() => {
-		worker.current ??= new Worker(new URL("./worker.js", import.meta.url), {
+		worker.current ??= new Worker(new URL("./worker2.js", import.meta.url), {
 			type: "module",
 		})
 
