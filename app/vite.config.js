@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 import wasm from "vite-plugin-wasm"
 import topLevelAwait from "vite-plugin-top-level-await"
+import { viteStaticCopy } from "vite-plugin-static-copy"
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -14,6 +15,18 @@ export default defineConfig({
 		topLevelAwait({
 			promiseExportName: "__tla",
 			promiseImportName: (i) => `__tla_${i}`,
+		}),
+		viteStaticCopy({
+			targets: [
+				{
+					src: "./node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs",
+					dest: "wasm",
+				},
+				{
+					src: "./node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.wasm",
+					dest: "wasm",
+				},
+			],
 		}),
 	],
 	build: {

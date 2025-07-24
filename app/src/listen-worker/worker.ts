@@ -1,3 +1,12 @@
+import { env } from "@huggingface/transformers"
+
+if (!env.backends.onnx.wasm) throw new Error("ONNX WASM backend not available")
+
+// Configure transformers.js to use local models and wasm files.
+env.allowLocalModels = true
+env.localModelPath = "/models/"
+env.backends.onnx.wasm.wasmPaths = "/wasm/"
+
 import {
 	handleAudioChunk,
 	initAutomaticSpeechRecognition,
@@ -41,7 +50,9 @@ const worker = async (): Promise<void> => {
 	}
 
 	const dispatchTranscription = (): void => {
-		const audioForTranscription = prepareAudioForTranscription(asr.activeRecordingQueue)
+		const audioForTranscription = prepareAudioForTranscription(
+			asr.activeRecordingQueue,
+		)
 
 		transcribe(asr, audioForTranscription).then((text: string) => {
 			if (!text) {
@@ -92,7 +103,11 @@ const worker = async (): Promise<void> => {
 						case "disptch-transcription":
 							dispatchTranscription()
 							// After transcription, if there's overflow, it becomes the new currentChunks
-							asr = { ...asr, activeRecordingQueue: action.overflow, preRollQueue: [] }
+							asr = {
+								...asr,
+								activeRecordingQueue: action.overflow,
+								preRollQueue: [],
+							}
 							break
 						case "discard-recording":
 							resetAfterRecording()
