@@ -208,7 +208,7 @@ export async function transcribe(
 	asr: AutomaticSpeechRecognition,
 	buffer: Float32Array,
 ): Promise<string> {
-	const result = await asr.transcriber(buffer)
+	const result = await asr.transcriber(buffer, { language: "en" })
 
 	const first = Array.isArray(result) ? result[0] : result
 

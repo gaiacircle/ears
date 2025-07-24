@@ -31,13 +31,8 @@ export default function App() {
 	const [callStarted, setCallStarted] = useState(false)
 	const [playing, setPlaying] = useState(false)
 
-	const [voice, setVoice] = useState("af_heart")
-	const [voices, setVoices] = useState<Record<string, Voice>>({})
-
 	const [isListening, setIsListening] = useState(false)
-	const [isSpeaking, setIsSpeaking] = useState(false)
 	const [listeningScale, setListeningScale] = useState(1)
-	const [speakingScale, setSpeakingScale] = useState(1)
 	const [ripples, setRipples] = useState<number[]>([])
 
 	const [ready, setReady] = useState(false)
@@ -47,13 +42,6 @@ export default function App() {
 
 	const micStreamRef = useRef<MediaStream | null>(null)
 	const node = useRef<AudioWorkletNode | null>(null)
-
-	// useEffect(() => {
-	// 	worker.current?.postMessage({
-	// 		type: "set_voice",
-	// 		voice,
-	// 	})
-	// }, [voice])
 
 	useEffect(() => {
 		if (!callStarted) {
@@ -91,26 +79,16 @@ export default function App() {
 		const onMessage = ({ data }: { data: FromWorkerMessage }) => {
 			switch (data.type) {
 				case "ready":
-					setVoices(data.voices || {})
 					setReady(true)
 					break
 				case "recording-start":
 					setIsListening(true)
-					setIsSpeaking(false)
 					break
 				case "recording-end":
 					setIsListening(false)
 					break
 				case "input":
 					console.log("input", data)
-					break
-				case "output":
-					if (!playing && node.current) {
-						node.current.port.postMessage(data.audio)
-						setPlaying(true)
-						setIsSpeaking(true)
-						setIsListening(false)
-					}
 					break
 				case "error":
 					return setError(data.error.message)
@@ -204,7 +182,6 @@ export default function App() {
 				node.current.port.onmessage = (event: MessageEvent) => {
 					if (event.data.type === "playback-ended") {
 						setPlaying(false)
-						setIsSpeaking(false)
 						worker.current?.postMessage({ type: "playback-ended" })
 					}
 				}
@@ -215,18 +192,11 @@ export default function App() {
 				node.current.connect(outputAnalyser)
 				outputAnalyser.connect(outputAudioContext.destination)
 
-				const outputDataArray = new Uint8Array(outputAnalyser.frequencyBinCount)
-
 				function updateVisualizers() {
 					analyser.getByteTimeDomainData(inputDataArray)
 					const rms = calculateRMS(inputDataArray)
 					const targetScale = 1 + Math.min(1.25 * rms, 0.25)
 					setListeningScale((prev) => prev + (targetScale - prev) * 0.25)
-
-					outputAnalyser.getByteTimeDomainData(outputDataArray)
-					const outputRMS = calculateRMS(outputDataArray)
-					const targetOutputScale = 1 + Math.min(1.25 * outputRMS, 0.25)
-					setSpeakingScale((prev) => prev + (targetOutputScale - prev) * 0.25)
 
 					requestAnimationFrame(updateVisualizers)
 				}
@@ -291,30 +261,6 @@ export default function App() {
 	return (
 		<div className="h-screen min-h-[240px] flex items-center justify-center bg-gray-50 p-4 relative">
 			<div className="h-full max-h-[320px] w-[640px] bg-white rounded-xl shadow-lg p-8 flex items-center justify-between space-x-16">
-				<div className="text-green-700 w-[140px]">
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button className="flex justify-between min-w-[180px]">
-								{voices[voice]?.name ?? "Select voice"}
-								<ChevronDown />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuPortal>
-							<DropdownMenuContent align="start">
-								<DropdownMenuRadioGroup value={voice} onValueChange={setVoice}>
-									{Object.entries(voices).map(([key, v]: [string, Voice]) => (
-										<DropdownMenuRadioItem key={key} value={key}>
-											{`${v.name} (${
-												v.language === "en-us" ? "American" : v.language
-											} ${v.gender})`}
-										</DropdownMenuRadioItem>
-									))}
-								</DropdownMenuRadioGroup>
-							</DropdownMenuContent>
-						</DropdownMenuPortal>
-					</DropdownMenu>
-				</div>
-
 				<div className="relative flex items-center justify-center w-32 h-32 flex-shrink-0 aspect-square">
 					{callStarted &&
 						ripples.map((id) => (
@@ -334,12 +280,6 @@ export default function App() {
 					{/* Main rings */}
 					<div
 						className={`absolute w-32 h-32 rounded-full shadow-inner transition-transform duration-300 ease-out ${
-							error ? "bg-red-300" : "bg-green-300"
-						} ${!ready ? "opacity-0" : ""}`}
-						style={{ transform: `scale(${speakingScale})` }}
-					/>
-					<div
-						className={`absolute w-32 h-32 rounded-full shadow-inner transition-transform duration-300 ease-out ${
 							error ? "bg-red-200" : "bg-green-200"
 						} ${!ready ? "opacity-0" : ""}`}
 						style={{ transform: `scale(${listeningScale})` }}
@@ -356,7 +296,6 @@ export default function App() {
 							<>
 								{!ready && "Loading..."}
 								{isListening && `Listening... ${elapsedTime}`}
-								{isSpeaking && "Speaking..."}
 							</>
 						)}
 					</div>
@@ -370,7 +309,6 @@ export default function App() {
 								setCallStartTime(null)
 								setPlaying(false)
 								setIsListening(false)
-								setIsSpeaking(false)
 							}}
 						>
 							<PhoneOff className="w-5 h-5" />
