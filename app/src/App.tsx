@@ -1,17 +1,17 @@
-import { useEffect, useState, useRef } from "react"
-import { PhoneOff, ChevronDown } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { INPUT_SAMPLE_RATE } from "./constants.js"
+import { ChevronDown, PhoneOff } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 
-import WORKLET from "./play-worklet.js"
+import { Button } from "@/components/ui/button"
 import {
 	DropdownMenu,
 	DropdownMenuContent,
-	DropdownMenuTrigger,
+	DropdownMenuPortal,
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
-	DropdownMenuPortal,
+	DropdownMenuTrigger,
 } from "./components/ui/dropdown-menu.js"
+import { INPUT_SAMPLE_RATE } from "./constants.js"
+import WORKLET from "./play-worklet.js"
 
 // Type definitions
 interface Voice {
@@ -85,9 +85,12 @@ export default function App() {
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: one-time initialization
 	useEffect(() => {
-		worker.current ??= new Worker(new URL("./worker2.js", import.meta.url), {
-			type: "module",
-		})
+		worker.current ??= new Worker(
+			new URL("./listen-worker/worker.js", import.meta.url),
+			{
+				type: "module",
+			},
+		)
 
 		const onMessage = ({ data }: { data: WorkerMessage }) => {
 			if (data.error) {

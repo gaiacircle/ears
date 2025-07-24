@@ -1,37 +1,22 @@
 import {
-	// VAD
-	AutoModel,
-	AutoModelForCausalLM,
-	// LLM
-	AutoTokenizer,
-	InterruptableStoppingCriteria,
+	type AutomaticSpeechRecognitionPipeline,
 	pipeline,
-	PretrainedConfig,
-	StoppingCriteriaList,
-	// Speech recognition
-	Tensor,
-	TextStreamer,
-	type Message,
-	env as trEnv,
-	PreTrainedModel,
-	AutomaticSpeechRecognitionPipeline,
 } from "@huggingface/transformers"
 
-// @ts-ignore - Module resolution issue with kokoro
-import { KokoroTTS, TextSplitterStream } from "kokoro"
-
 import {
-	EXIT_THRESHOLD,
 	INPUT_SAMPLE_RATE,
 	MAX_BUFFER_DURATION,
 	MAX_NUM_PREV_BUFFERS,
 	MIN_SILENCE_DURATION_SAMPLES,
 	MIN_SPEECH_DURATION_SAMPLES,
 	SPEECH_PAD_SAMPLES,
-	SPEECH_THRESHOLD,
-} from "./constants"
+} from "../constants"
+import { DEVICE_DTYPE_CONFIGS, detectDevice } from "../lib/detect-device"
 
-import { detectDevice, DEVICE_DTYPE_CONFIGS } from "./lib/detect"
+import {
+	detectVoiceActivity,
+	initVoiceActivityDetection,
+} from "./voice-activity-detection"
 
 ;(async (): Promise<void> => {
 	const prevBuffers: Float32Array[] = []
@@ -45,19 +30,9 @@ import { detectDevice, DEVICE_DTYPE_CONFIGS } from "./lib/detect"
 	})
 
 	// Load models
-	let voiceActivity: PreTrainedModel
-	try {
-		voiceActivity = await AutoModel.from_pretrained(
-			"onnx-community/silero-vad",
-			{
-				config: new PretrainedConfig({ model_type: "custom" }),
-				dtype: "fp32", // Full-precision
-			},
-		)
-	} catch (error) {
+	const vad = await initVoiceActivityDetection((error) => {
 		self.postMessage({ error })
-		throw error
-	}
+	})
 
 	let transcriber: AutomaticSpeechRecognitionPipeline
 	try {
@@ -90,14 +65,6 @@ import { detectDevice, DEVICE_DTYPE_CONFIGS } from "./lib/detect"
 	)
 	let bufferPointer = 0
 
-	// Initial state for VAD
-	const sr: Tensor = new Tensor("int64", [INPUT_SAMPLE_RATE], [])
-	let state: Tensor = new Tensor(
-		"float32",
-		new Float32Array(2 * 1 * 128),
-		[2, 1, 128],
-	)
-
 	// Whether we are in the process of adding audio to the buffer
 	let isRecording = false
 
@@ -106,22 +73,24 @@ import { detectDevice, DEVICE_DTYPE_CONFIGS } from "./lib/detect"
 	 * @param {Float32Array} buffer The new audio buffer
 	 * @returns {Promise<boolean>} `true` if the buffer is speech, `false` otherwise.
 	 */
-	async function vad(buffer: Float32Array): Promise<boolean> {
-		const input = new Tensor("float32", buffer, [1, buffer.length])
+	// async function vad(buffer: Float32Array): Promise<boolean> {
+	// 	const input = new Tensor("float32", buffer, [1, buffer.length])
 
-		const { stateN, output } = await voiceActivity({ input, sr, state })
-		state = stateN // Update state
+	// 	const result = await voiceActivity({ input, sr, state })
+	// 	console.log("voiceActivity result", result)
+	// 	// const { stateN, output } = await voiceActivity({ input, sr, state })
+	// 	state = result.stateN // Update state
 
-		const isSpeech: number = output.data[0] as number
+	// 	const isSpeech: number = result.output.data[0] as number
 
-		// Use heuristics to determine if the buffer is speech or not
-		return (
-			// Case 1: We are above the threshold (definitely speech)
-			isSpeech > SPEECH_THRESHOLD ||
-			// Case 2: We are in the process of recording, and the probability is above the negative (exit) threshold
-			(isRecording && isSpeech >= EXIT_THRESHOLD)
-		)
-	}
+	// 	// Use heuristics to determine if the buffer is speech or not
+	// 	return (
+	// 		// Case 1: We are above the threshold (definitely speech)
+	// 		isSpeech > SPEECH_THRESHOLD ||
+	// 		// Case 2: We are in the process of recording, and the probability is above the negative (exit) threshold
+	// 		(isRecording && isSpeech >= EXIT_THRESHOLD)
+	// 	)
+	// }
 
 	/**
 	 * Transcribe the audio buffer
@@ -168,12 +137,12 @@ import { detectDevice, DEVICE_DTYPE_CONFIGS } from "./lib/detect"
 		overflow?: Float32Array,
 	): void => {
 		// Get start and end time of the speech segment, minus the padding
-		const now: number = Date.now()
-		const end: number =
-			now -
-			((postSpeechSamples + SPEECH_PAD_SAMPLES) / INPUT_SAMPLE_RATE) * 1000
-		const start: number = end - (bufferPointer / INPUT_SAMPLE_RATE) * 1000
-		const duration: number = end - start
+		// const now: number = Date.now()
+		// const end: number =
+		// 	now -
+		// 	((postSpeechSamples + SPEECH_PAD_SAMPLES) / INPUT_SAMPLE_RATE) * 1000
+		// const start: number = end - (bufferPointer / INPUT_SAMPLE_RATE) * 1000
+		// const duration: number = end - start
 		const overflowLength: number = overflow?.length ?? 0
 
 		// Send the audio buffer to the worker
@@ -218,15 +187,18 @@ import { detectDevice, DEVICE_DTYPE_CONFIGS } from "./lib/detect"
 				return
 			case "playback_ended":
 				return
-      // case "audio": {
-		  //   const isSpeech: boolean = await vad(buffer)
-      // }
+			// case "audio": {
+			//   const isSpeech: boolean = await vad(buffer)
+			// }
 		}
 
-		const wasRecording: boolean = isRecording // Save current state
-		    const isSpeech: boolean = await vad(buffer)
+		const isSpeech: boolean = await detectVoiceActivity(
+			vad,
+			buffer,
+			isRecording,
+		)
 
-		if (!wasRecording && !isSpeech) {
+		if (!isRecording && !isSpeech) {
 			// We are not recording, and the buffer is not speech,
 			// so we will probably discard the buffer. So, we insert
 			// into a FIFO queue with maximum size of PREV_BUFFER_SIZE

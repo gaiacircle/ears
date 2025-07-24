@@ -28,7 +28,7 @@ import {
 	SPEECH_PAD_SAMPLES,
 	SPEECH_THRESHOLD,
 } from "./constants"
-import { detectDevice } from "./lib/detect"
+import { detectDevice } from "./lib/detect-device"
 
 // trEnv.wasmPaths = {
 //   wasm: chrome.runtime.getURL("onnx/ort-wasm-simd-threaded.jsep.wasm"),
