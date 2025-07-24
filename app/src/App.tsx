@@ -1,14 +1,20 @@
 import { PhoneOff } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import { uuidv7 as uuid } from "uuidv7"
 
-import { Button } from "@/components/ui/button"
-import { INPUT_SAMPLE_RATE } from "./constants.js"
-import WORKLET from "./play-worklet.js"
 import type {
 	FromWorkerMessage,
 	ToWorkerMessage,
-} from "./listen-worker/types.js"
-import { useSmartAutoscroll } from "./hooks/useSmartAutoscroll.js"
+} from "@/listen-worker/types.js"
+import type { OpportunityCard } from "@/types/opportunity-card.js"
+import type { TranscriptEntry } from "@/types/transcript-entry.js"
+
+import { SpeechIndicator } from "@/components/speech-indicator.js"
+import { TranscriptPanel } from "@/components/transcript-panel"
+import { Button } from "@/components/ui/button"
+import { INPUT_SAMPLE_RATE } from "@/constants.js"
+import { useSmartAutoscroll } from "@/hooks/useSmartAutoscroll.js"
+import WORKLET from "@/play-worklet.js"
 
 interface ListenWorker extends Worker {
 	postMessage(message: ToWorkerMessage, transfer: Transferable[]): void
@@ -18,12 +24,8 @@ interface ListenWorker extends Worker {
 	): void
 }
 
-type Verse = {
-	content: string
-}
-
 export default function App() {
-	const conversationRef = useRef<HTMLDivElement>(null)
+	const transcriptRef = useRef<HTMLDivElement>(null)
 	const [callStartTime, setCallStartTime] = useState<number | null>(null)
 	const [callStarted, setCallStarted] = useState(false)
 
@@ -31,7 +33,11 @@ export default function App() {
 	const [listeningScale, setListeningScale] = useState(1)
 	const [ripples, setRipples] = useState<number[]>([])
 
-	const [conversation, setConversation] = useState<Verse[]>([])
+	const [transcript, setTranscript] = useState<TranscriptEntry[]>([])
+	const [opportunityCards, setOpportunityCards] = useState<OpportunityCard[]>(
+		[],
+	)
+	const [isProcessing, setIsProcessing] = useState(false)
 
 	const [ready, setReady] = useState(false)
 	const [error, setError] = useState<string | null>(null)
@@ -41,12 +47,12 @@ export default function App() {
 	const micStreamRef = useRef<MediaStream | null>(null)
 	const node = useRef<AudioWorkletNode | null>(null)
 
-	const scrollToEnd = useSmartAutoscroll(conversationRef)
+	const scrollToEnd = useSmartAutoscroll(transcriptRef)
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: change to conversation triggers scrollToEnd
+	// biome-ignore lint/correctness/useExhaustiveDependencies: any change to the transcript triggers scrollToEnd
 	useEffect(() => {
 		scrollToEnd()
-	}, [conversation])
+	}, [transcript])
 
 	useEffect(() => {
 		if (!callStarted) {
@@ -92,9 +98,9 @@ export default function App() {
 					setIsListening(false)
 					break
 				case "input":
-					setConversation((conversation) => [
-						...conversation,
-						{ content: data.text },
+					setTranscript((transcript) => [
+						...transcript,
+						{ id: uuid(), text: data.text, timestamp: Date.now() },
 					])
 					break
 				case "error":
@@ -303,87 +309,7 @@ export default function App() {
 					)}
 				</div>
 
-				<div
-					ref={conversationRef}
-					className="w-full h-full bg-white rounded-xl shadow-lg overflow-y-auto"
-				>
-					{conversation.map((verse, i) => (
-						// biome-ignore lint/suspicious/noArrayIndexKey: <explanation>
-						<div key={i} className="m-2 p-2">
-							{verse.content}
-						</div>
-					))}
-				</div>
-			</div>
-		</div>
-	)
-}
-
-interface SpeechIndicatorProps {
-	callStarted: boolean
-	ripples: number[]
-	error: string | null
-	ready: boolean
-	isListening: boolean
-	elapsedTime: string
-	listeningScale: number
-}
-
-function SpeechIndicator({
-	callStarted,
-	ripples,
-	error,
-	ready,
-	isListening,
-	elapsedTime,
-	listeningScale,
-}: SpeechIndicatorProps) {
-	return (
-		<div
-			className={
-				"relative flex items-center justify-center " +
-				"size-16 flex-shrink-0 aspect-square"
-			}
-		>
-			{callStarted &&
-				ripples.map((id) => (
-					<div
-						key={id}
-						className={
-							"absolute inset-0 rounded-full border-2 border-green-200 " +
-							"pointer-events-none"
-						}
-						style={{ animation: "ripple 1.5s ease-out forwards" }}
-					/>
-				))}
-			{/* Pulsing loader while initializing */}
-			<div
-				className={`absolute ${callStarted ? "size-16" : "size-4"} rounded-full ${
-					error ? "bg-red-200" : "bg-yellow-200"
-				} ${!ready ? "animate-ping opacity-75" : ""}`}
-				style={{ animationDuration: "1.5s" }}
-			/>
-			{/* Main rings */}
-			<div
-				className={`absolute ${callStarted ? "size-16" : "size-4"} rounded-full shadow-inner transition-transform duration-300 ease-out ${
-					error ? "bg-red-200" : "bg-green-200"
-				} ${!ready ? "opacity-0" : ""}`}
-				style={{ transform: `scale(${listeningScale})` }}
-			/>
-			{/* Center text: show error if present, else existing statuses */}
-			<div
-				className={`absolute z-10 text-md text-center ${
-					error ? "text-red-700" : "text-gray-700"
-				}`}
-			>
-				{error ? (
-					error
-				) : (
-					<>
-						{!ready && "Loading..."}
-						{isListening && `Listening... ${elapsedTime}`}
-					</>
-				)}
+				<TranscriptPanel transcript={transcript} transcriptRef={transcriptRef} />
 			</div>
 		</div>
 	)
