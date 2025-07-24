@@ -59,7 +59,7 @@ export default function App() {
 		if (!callStarted) {
 			// Reset worker state after call ends
 			worker.current?.postMessage({
-				type: "end_call",
+				type: "end-call",
 			})
 		}
 	}, [callStarted])
@@ -94,11 +94,11 @@ export default function App() {
 					setVoices(data.voices || {})
 					setReady(true)
 					break
-				case "recording_start":
+				case "recording-start":
 					setIsListening(true)
 					setIsSpeaking(false)
 					break
-				case "recording_end":
+				case "recording-end":
 					setIsListening(false)
 					break
 				case "input":
@@ -202,10 +202,10 @@ export default function App() {
 				)
 
 				node.current.port.onmessage = (event: MessageEvent) => {
-					if (event.data.type === "playback_ended") {
+					if (event.data.type === "playback-ended") {
 						setPlaying(false)
 						setIsSpeaking(false)
-						worker.current?.postMessage({ type: "playback_ended" })
+						worker.current?.postMessage({ type: "playback-ended" })
 					}
 				}
 
@@ -281,7 +281,7 @@ export default function App() {
 
 			setCallStartTime(Date.now())
 			setCallStarted(true)
-			worker.current?.postMessage({ type: "start_call" })
+			worker.current?.postMessage({ type: "start-call" })
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err))
 			console.error(err)

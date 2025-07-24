@@ -6,17 +6,17 @@ export type Voice = {
 
 export type ToWorkerMessage =
 	| {
-			type: "start_call"
+			type: "start-call"
 	  }
 	| {
 			type: "audio"
 			buffer: Float32Array
 	  }
 	| {
-			type: "end_call"
+			type: "end-call"
 	  }
 	| {
-			type: "playback_ended"
+			type: "playback-ended"
 	  }
 
 export type FromWorkerMessage =
@@ -26,14 +26,12 @@ export type FromWorkerMessage =
 			voices: Record<string, Voice>
 	  }
 	| {
-			type: "recording_start"
+			type: "recording-start"
 			message: string
-			duration: "until_next"
 	  }
 	| {
-			type: "recording_end"
+			type: "recording-end"
 			message: string
-			duration: "until_next"
 	  }
 	| {
 			type: "input"
@@ -47,7 +45,6 @@ export type FromWorkerMessage =
 	| {
 			type: "info"
 			message: string
-			duration: "until_next"
 	  }
 	| {
 			type: "error"

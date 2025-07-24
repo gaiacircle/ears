@@ -300,7 +300,7 @@ type GenerationObjectOutput = {
 	const resetAfterRecording = (offset = 0): void => {
 		self.postMessage({
 			type: "status",
-			status: "recording_end",
+			status: "recording-end",
 			message: "Transcribing...",
 			duration: "until_next",
 		})
@@ -355,13 +355,13 @@ type GenerationObjectOutput = {
 		if (type === "audio" && isPlaying) return
 
 		switch (type) {
-			case "start_call": {
+			case "start-call": {
 				// const voiceKey = (voice ?? "af_heart") as VoiceKey;
 				// const name: string = tts.voices[voiceKey]?.name ?? "Heart";
 				// say(`Hey there, my name is ${name}! How can I help you today?`);
 				return
 			}
-			case "end_call":
+			case "end-call":
 				messages = [SYSTEM_MESSAGE]
 				past_key_values_cache = null
 				stopping_criteria?.interrupt()
@@ -372,7 +372,7 @@ type GenerationObjectOutput = {
 			case "set_voice":
 				voice = event.data.voice as VoiceKey
 				return
-			case "playback_ended":
+			case "playback-ended":
 				isPlaying = false
 				return
 		}
@@ -415,7 +415,7 @@ type GenerationObjectOutput = {
 				// Indicate start of recording
 				self.postMessage({
 					type: "status",
-					status: "recording_start",
+					status: "recording-start",
 					message: "Listening...",
 					duration: "until_next",
 				})

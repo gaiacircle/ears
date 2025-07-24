@@ -30,7 +30,7 @@ export default () => {
 			let outputIndex = 0
 
 			if (this.hadData && this.bufferQueue.length === 0) {
-				this.port.postMessage({ type: "playback_ended" })
+				this.port.postMessage({ type: "playback-ended" })
 				this.hadData = false
 			}
 

@@ -21,14 +21,14 @@ export type AutomaticSpeechRecognition = {
 }
 
 export type WorkerAction =
-	| { type: "QUEUE_PREV_BUFFER" }
-	| { type: "START_RECORDING" }
-	| { type: "CONTINUE_RECORDING" }
+	| { type: "enqueue-prev-buffer" }
+	| { type: "start-recording" }
+	| { type: "continue-recording" }
 	| {
-			type: "DISPATCH_TRANSCRIPTION"
+			type: "disptch-transcription"
 			overflow: Float32Array
 	  }
-	| { type: "DISCARD_RECORDING" }
+	| { type: "discard-recording" }
 
 export async function initAutomaticSpeechRecognition(): Promise<AutomaticSpeechRecognition> {
 	const device = await detectDevice()
@@ -74,7 +74,7 @@ export function handleAudioChunk(
 		}
 		return {
 			updatedAsr: { ...asr, prevBuffers: newPrevBuffers },
-			action: { type: "QUEUE_PREV_BUFFER" },
+			action: { type: "enqueue-prev-buffer" },
 		}
 	}
 
@@ -95,7 +95,7 @@ export function handleAudioChunk(
 		}
 		return {
 			updatedAsr,
-			action: { type: "DISPATCH_TRANSCRIPTION", overflow },
+			action: { type: "disptch-transcription", overflow },
 		}
 	}
 
@@ -111,7 +111,7 @@ export function handleAudioChunk(
 
 	if (isSpeech) {
 		// New recording, or continuing recording
-		const actionType = !isRecording ? "START_RECORDING" : "CONTINUE_RECORDING"
+		const actionType = !isRecording ? "start-recording" : "continue-recording"
 		updatedAsr = { ...updatedAsr, postSpeechSamples: 0 } // Reset silence counter
 		return {
 			updatedAsr,
@@ -127,7 +127,7 @@ export function handleAudioChunk(
 		// Not enough silence yet, continue recording
 		return {
 			updatedAsr,
-			action: { type: "CONTINUE_RECORDING" },
+			action: { type: "continue-recording" },
 		}
 	}
 
@@ -137,7 +137,7 @@ export function handleAudioChunk(
 		// Speech too short, discard.
 		return {
 			updatedAsr, // state will be reset in worker
-			action: { type: "DISCARD_RECORDING" },
+			action: { type: "discard-recording" },
 		}
 	}
 
@@ -147,7 +147,7 @@ export function handleAudioChunk(
 	return {
 		updatedAsr,
 		action: {
-			type: "DISPATCH_TRANSCRIPTION",
+			type: "disptch-transcription",
 			overflow,
 		},
 	}

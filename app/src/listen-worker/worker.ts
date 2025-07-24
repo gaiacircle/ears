@@ -1,9 +1,4 @@
-import {
-	MAX_NUM_PREV_BUFFERS,
-	MIN_SILENCE_DURATION_SAMPLES,
-	MIN_SPEECH_DURATION_SAMPLES,
-	SPEECH_PAD_SAMPLES,
-} from "../constants"
+import { SPEECH_PAD_SAMPLES } from "../constants"
 import {
 	handleAudioChunk,
 	initAutomaticSpeechRecognition,
@@ -26,7 +21,6 @@ const worker = async (): Promise<void> => {
 	postMessage({
 		type: "info",
 		message: "Loading models...",
-		duration: "until_next",
 	})
 
 	// Load models
@@ -48,9 +42,8 @@ const worker = async (): Promise<void> => {
 		// This function should now reset the ASR state by calling the new resetAsrState function.
 		// asr = resetAsrState(asr);
 		postMessage({
-			type: "recording_end",
+			type: "recording-end",
 			message: "Transcribing...",
-			duration: "until_next",
 		})
 		asr = resetAsrState(asr)
 		isRecording = false
@@ -89,7 +82,7 @@ const worker = async (): Promise<void> => {
 		const { type, buffer } = event.data
 
 		switch (type) {
-			case "start_call":
+			case "start-call":
 				break
 			case "audio":
 				{
@@ -108,29 +101,28 @@ const worker = async (): Promise<void> => {
 					asr = updatedAsr
 
 					switch (action.type) {
-						case "QUEUE_PREV_BUFFER":
-						case "CONTINUE_RECORDING":
+						case "enqueue-prev-buffer":
+						case "continue-recording":
 							// No worker-side effects needed
 							break
-						case "START_RECORDING":
+						case "start-recording":
 							postMessage({
-								type: "recording_start",
+								type: "recording-start",
 								message: "Listening...",
-								duration: "until_next",
 							})
 							isRecording = true
 							break
-						case "DISPATCH_TRANSCRIPTION":
+						case "disptch-transcription":
 							dispatchTranscription(action.overflow)
 							asr = resetAudioBuffer(asr, action.overflow)
 							break
-						case "DISCARD_RECORDING":
+						case "discard-recording":
 							resetAfterRecording()
 							break
 					}
 				}
 				break
-			case "end_call":
+			case "end-call":
 				break
 		}
 	}
