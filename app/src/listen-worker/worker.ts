@@ -7,6 +7,7 @@ import {
 import {
 	handleAudioChunk,
 	initAutomaticSpeechRecognition,
+	prepareAudioForTranscription,
 	resetAsrState,
 	resetAudioBuffer,
 	transcribe,
@@ -55,27 +56,16 @@ const worker = async (): Promise<void> => {
 		isRecording = false
 	}
 
-	const dispatchForTranscriptionAndResetAudioBuffer = (
-		overflow?: Float32Array,
-	): void => {
+	const dispatchTranscription = (overflow?: Float32Array): void => {
 		const speechBuffer: Float32Array = asr.audioBuffer.slice(
 			0,
 			asr.bufferPointer + SPEECH_PAD_SAMPLES,
 		)
 
-		const prevLength: number = asr.prevBuffers.reduce(
-			(acc, b) => acc + b.length,
-			0,
+		const audioForTranscription = prepareAudioForTranscription(
+			asr,
+			speechBuffer,
 		)
-		const audioForTranscription: Float32Array = new Float32Array(
-			prevLength + speechBuffer.length,
-		)
-		let offset = 0
-		for (const prev of asr.prevBuffers) {
-			audioForTranscription.set(prev, offset)
-			offset += prev.length
-		}
-		audioForTranscription.set(speechBuffer, offset)
 
 		transcribe(asr, audioForTranscription).then((text: string) => {
 			if (!text) {
@@ -131,7 +121,8 @@ const worker = async (): Promise<void> => {
 							isRecording = true
 							break
 						case "DISPATCH_TRANSCRIPTION":
-							dispatchForTranscriptionAndResetAudioBuffer(action.overflow)
+							dispatchTranscription(action.overflow)
+							asr = resetAudioBuffer(asr, action.overflow)
 							break
 						case "DISCARD_RECORDING":
 							resetAfterRecording()

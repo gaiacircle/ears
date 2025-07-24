@@ -189,6 +189,28 @@ export function resetAsrState(
 		prevBuffers: [],
 	}
 }
+export function prepareAudioForTranscription(
+	asr: AutomaticSpeechRecognition,
+	speechBuffer: Float32Array,
+): Float32Array {
+	const prevLength = asr.prevBuffers.reduce(
+		(sum, buf) => sum + buf.length,
+		0,
+	)
+	const audioForTranscription = new Float32Array(
+		prevLength + speechBuffer.length,
+	)
+
+	let offset = 0
+	for (const prev of asr.prevBuffers) {
+		audioForTranscription.set(prev, offset)
+		offset += prev.length
+	}
+	audioForTranscription.set(speechBuffer, offset)
+
+	return audioForTranscription
+}
+
 
 /**
  * Transcribe the audio buffer
