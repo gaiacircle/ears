@@ -18,6 +18,7 @@ export type AutomaticSpeechRecognition = {
 	audioBuffer: Float32Array
 	bufferPointer: number
 	prevBuffers: Float32Array[]
+	postSpeechSamples: number
 }
 
 export async function initAutomaticSpeechRecognition(): Promise<AutomaticSpeechRecognition> {
@@ -41,7 +42,13 @@ export async function initAutomaticSpeechRecognition(): Promise<AutomaticSpeechR
 	)
 	const bufferPointer = 0
 
-	return { transcriber, audioBuffer, bufferPointer, prevBuffers: [] }
+	return {
+		transcriber,
+		audioBuffer,
+		bufferPointer,
+		prevBuffers: [],
+		postSpeechSamples: 0,
+	}
 }
 
 /**

@@ -12,22 +12,18 @@ import {
 } from "./components/ui/dropdown-menu.js"
 import { INPUT_SAMPLE_RATE } from "./constants.js"
 import WORKLET from "./play-worklet.js"
+import type {
+	FromWorkerMessage,
+	ToWorkerMessage,
+	Voice,
+} from "./listen-worker/types.js"
 
-// Type definitions
-interface Voice {
-	name: string
-	language: string
-	gender: string
-}
-
-interface WorkerMessage {
-	type: string
-	status?: string
-	voices?: Record<string, Voice>
-	result?: {
-		audio: Float32Array
-	}
-	error?: Error
+interface ListenWorker extends Worker {
+	postMessage(message: ToWorkerMessage, transfer: Transferable[]): void
+	postMessage(
+		message: ToWorkerMessage,
+		options?: StructuredSerializeOptions,
+	): void
 }
 
 export default function App() {
@@ -47,7 +43,7 @@ export default function App() {
 	const [ready, setReady] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const [elapsedTime, setElapsedTime] = useState("00:00")
-	const worker = useRef<Worker | null>(null)
+	const worker = useRef<ListenWorker | null>(null)
 
 	const micStreamRef = useRef<MediaStream | null>(null)
 	const node = useRef<AudioWorkletNode | null>(null)
@@ -92,34 +88,32 @@ export default function App() {
 			},
 		)
 
-		const onMessage = ({ data }: { data: WorkerMessage }) => {
-			if (data.error) {
-				return setError(data.error.message)
-			}
-
+		const onMessage = ({ data }: { data: FromWorkerMessage }) => {
 			switch (data.type) {
-				case "status":
-					if (data.status === "recording_start") {
-						setIsListening(true)
-						setIsSpeaking(false)
-					} else if (data.status === "recording_end") {
-						setIsListening(false)
-					} else if (data.status === "ready") {
-						setVoices(data.voices || {})
-						setReady(true)
-					}
+				case "ready":
+					setVoices(data.voices || {})
+					setReady(true)
+					break
+				case "recording_start":
+					setIsListening(true)
+					setIsSpeaking(false)
+					break
+				case "recording_end":
+					setIsListening(false)
 					break
 				case "input":
 					console.log("input", data)
 					break
 				case "output":
-					if (!playing && data.result?.audio) {
-						node.current?.port.postMessage(data.result.audio)
+					if (!playing && node.current) {
+						node.current.port.postMessage(data.audio)
 						setPlaying(true)
 						setIsSpeaking(true)
 						setIsListening(false)
 					}
 					break
+				case "error":
+					return setError(data.error.message)
 			}
 		}
 		const onError = (ev: ErrorEvent) => setError(ev.message)

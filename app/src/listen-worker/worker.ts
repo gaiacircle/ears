@@ -8,14 +8,18 @@ import {
 	initAutomaticSpeechRecognition,
 	transcribe,
 } from "./automatic-speech-recognition"
-
+import type { FromWorkerMessage } from "./types"
 import {
 	detectVoiceActivity,
 	initVoiceActivityDetection,
 } from "./voice-activity-detection"
 
+function postMessage(message: FromWorkerMessage): void {
+	self.postMessage(message)
+}
+
 const worker = async (): Promise<void> => {
-	self.postMessage({
+	postMessage({
 		type: "info",
 		message: "Loading models...",
 		duration: "until_next",
@@ -26,9 +30,8 @@ const worker = async (): Promise<void> => {
 
 	const asr = await initAutomaticSpeechRecognition()
 
-	self.postMessage({
-		type: "status",
-		status: "ready",
+	postMessage({
+		type: "ready",
 		message: "Ready!",
 		voices: {},
 	})
@@ -37,18 +40,16 @@ const worker = async (): Promise<void> => {
 	let isRecording = false
 
 	// Track the number of samples after the last speech chunk
-	let postSpeechSamples = 0
 	const resetAfterRecording = (offset = 0): void => {
-		self.postMessage({
-			type: "status",
-			status: "recording_end",
+		postMessage({
+			type: "recording_end",
 			message: "Transcribing...",
 			duration: "until_next",
 		})
 		asr.audioBuffer.fill(0, offset)
 		asr.bufferPointer = offset
+		asr.postSpeechSamples = 0
 		isRecording = false
-		postSpeechSamples = 0
 	}
 
 	const dispatchForTranscriptionAndResetAudioBuffer = (
@@ -83,7 +84,7 @@ const worker = async (): Promise<void> => {
 				console.log("skip blank audio")
 			}
 
-			self.postMessage({ type: "input", text })
+			postMessage({ type: "input", text })
 		})
 
 		// Set overflow (if present) and reset the rest of the audio buffer
@@ -93,7 +94,12 @@ const worker = async (): Promise<void> => {
 		resetAfterRecording(overflowLength)
 	}
 
-	self.onmessage = async (event: MessageEvent): Promise<void> => {
+	self.onmessage = async (
+		event: MessageEvent<{
+			type: string
+			buffer: Float32Array
+		}>,
+	): Promise<void> => {
 		const { type, buffer } = event.data
 
 		console.log("message received in worker", type, event.data)
@@ -152,24 +158,23 @@ const worker = async (): Promise<void> => {
 		if (isSpeech) {
 			if (!isRecording) {
 				// Indicate start of recording
-				self.postMessage({
-					type: "status",
-					status: "recording_start",
+				postMessage({
+					type: "recording_start",
 					message: "Listening...",
 					duration: "until_next",
 				})
 			}
 			// Start or continue recording
 			isRecording = true
-			postSpeechSamples = 0 // Reset the post-speech samples
+			asr.postSpeechSamples = 0 // Reset the post-speech samples
 			return
 		}
 
-		postSpeechSamples += buffer.length
+		asr.postSpeechSamples += buffer.length
 
 		// At this point we're confident that we were recording (wasRecording === true), but the latest buffer is not speech.
 		// So, we check whether we have reached the end of the current audio chunk.
-		if (postSpeechSamples < MIN_SILENCE_DURATION_SAMPLES) {
+		if (asr.postSpeechSamples < MIN_SILENCE_DURATION_SAMPLES) {
 			// There was a short pause, but not long enough to consider the end of a speech chunk
 			// (e.g., the speaker took a breath), so we continue recording
 			return
@@ -189,6 +194,10 @@ const worker = async (): Promise<void> => {
 try {
 	worker()
 } catch (error) {
-	self.postMessage({ error })
+	if (error instanceof Error) {
+		postMessage({ type: "error", error })
+	} else {
+		postMessage({ type: "error", error: new Error("Unknown error") })
+	}
 	throw error
 }
