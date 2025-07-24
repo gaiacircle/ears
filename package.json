@@ -1,20 +1,23 @@
 {
-  "name": "gaia-circle-monorepo",
-  "version": "1.0.0",
-  "description": "Gaia Circle Monorepo",
-  "private": true,
-  "workspaces": [
-    "app",
-    "packages/*"
-  ],
-  "scripts": {
-    "build": "pnpm -r build",
-    "test": "pnpm -r test",
-    "dev": "pnpm -r dev",
-    "lint": "pnpm -r lint"
-  },
-  "packageManager": "pnpm@9.12.3",
-  "engines": {
-    "node": ">=18.0.0"
-  }
+	"name": "gaia-circle-monorepo",
+	"version": "1.0.0",
+	"description": "Gaia Circle Monorepo",
+	"private": true,
+	"workspaces": [
+		"app",
+		"packages/*"
+	],
+	"scripts": {
+		"build": "pnpm -r build",
+		"test": "pnpm -r test",
+		"dev": "pnpm -r dev",
+		"lint": "pnpm -r lint"
+	},
+	"packageManager": "pnpm@9.12.3",
+	"engines": {
+		"node": ">=18.0.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "1.9.4"
+	}
 }
