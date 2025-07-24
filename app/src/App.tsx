@@ -48,12 +48,12 @@ export default function App() {
 	const micStreamRef = useRef<MediaStream | null>(null)
 	const node = useRef<AudioWorkletNode | null>(null)
 
-	useEffect(() => {
-		worker.current?.postMessage({
-			type: "set_voice",
-			voice,
-		})
-	}, [voice])
+	// useEffect(() => {
+	// 	worker.current?.postMessage({
+	// 		type: "set_voice",
+	// 		voice,
+	// 	})
+	// }, [voice])
 
 	useEffect(() => {
 		if (!callStarted) {

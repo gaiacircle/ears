@@ -102,21 +102,21 @@ const worker = async (): Promise<void> => {
 	): Promise<void> => {
 		const { type, buffer } = event.data
 
-		console.log("message received in worker", type, event.data)
 		switch (type) {
 			case "start_call":
-				return
+				break
+			case "audio":
+				{
+					// const isSpeech: boolean = await detectVoiceActivity(
+					// 	vad,
+					// 	buffer,
+					// 	isRecording,
+					// )
+					// console.log("message received in worker", type, event.data)
+				}
+				break
 			case "end_call":
-				return
-			case "interrupt":
-				return
-			case "set_voice":
-				return
-			case "playback_ended":
-				return
-			// case "audio": {
-			//   const isSpeech: boolean = await vad(buffer)
-			// }
+				break
 		}
 
 		const isSpeech: boolean = await detectVoiceActivity(

@@ -6,15 +6,11 @@ export type Voice = {
 
 export type ToWorkerMessage =
 	| {
+			type: "start_call"
+	  }
+	| {
 			type: "audio"
 			buffer: Float32Array
-	  }
-	| {
-			type: "set_voice"
-			voice: string
-	  }
-	| {
-			type: "start_call"
 	  }
 	| {
 			type: "end_call"
