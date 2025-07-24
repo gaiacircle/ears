@@ -1,28 +1,20 @@
 import {
-	type AutomaticSpeechRecognitionPipeline,
-	pipeline,
-} from "@huggingface/transformers"
-
-import {
-	INPUT_SAMPLE_RATE,
-	MAX_BUFFER_DURATION,
 	MAX_NUM_PREV_BUFFERS,
 	MIN_SILENCE_DURATION_SAMPLES,
 	MIN_SPEECH_DURATION_SAMPLES,
 	SPEECH_PAD_SAMPLES,
 } from "../constants"
-import { DEVICE_DTYPE_CONFIGS, detectDevice } from "../lib/detect-device"
+import {
+	initAutomaticSpeechRecognition,
+	transcribe,
+} from "./automatic-speech-recognition"
 
 import {
 	detectVoiceActivity,
 	initVoiceActivityDetection,
 } from "./voice-activity-detection"
 
-;(async (): Promise<void> => {
-	const prevBuffers: Float32Array[] = []
-
-	const device = await detectDevice()
-
+const worker = async (): Promise<void> => {
 	self.postMessage({
 		type: "info",
 		message: "Loading models...",
@@ -30,27 +22,9 @@ import {
 	})
 
 	// Load models
-	const vad = await initVoiceActivityDetection((error) => {
-		self.postMessage({ error })
-	})
+	const vad = await initVoiceActivityDetection()
 
-	let transcriber: AutomaticSpeechRecognitionPipeline
-	try {
-		transcriber = (await pipeline(
-			"automatic-speech-recognition",
-			"onnx-community/whisper-base",
-			{
-				device,
-				dtype:
-					DEVICE_DTYPE_CONFIGS[device as keyof typeof DEVICE_DTYPE_CONFIGS],
-			},
-		)) as any
-	} catch (error) {
-		self.postMessage({ error })
-		throw error
-	}
-
-	await transcriber(new Float32Array(INPUT_SAMPLE_RATE)) // Compile shaders
+	const asr = await initAutomaticSpeechRecognition()
 
 	self.postMessage({
 		type: "status",
@@ -59,64 +33,8 @@ import {
 		voices: {},
 	})
 
-	// Global audio buffer to store incoming audio
-	const BUFFER: Float32Array = new Float32Array(
-		MAX_BUFFER_DURATION * INPUT_SAMPLE_RATE,
-	)
-	let bufferPointer = 0
-
 	// Whether we are in the process of adding audio to the buffer
 	let isRecording = false
-
-	/**
-	 * Perform Voice Activity Detection (VAD)
-	 * @param {Float32Array} buffer The new audio buffer
-	 * @returns {Promise<boolean>} `true` if the buffer is speech, `false` otherwise.
-	 */
-	// async function vad(buffer: Float32Array): Promise<boolean> {
-	// 	const input = new Tensor("float32", buffer, [1, buffer.length])
-
-	// 	const result = await voiceActivity({ input, sr, state })
-	// 	console.log("voiceActivity result", result)
-	// 	// const { stateN, output } = await voiceActivity({ input, sr, state })
-	// 	state = result.stateN // Update state
-
-	// 	const isSpeech: number = result.output.data[0] as number
-
-	// 	// Use heuristics to determine if the buffer is speech or not
-	// 	return (
-	// 		// Case 1: We are above the threshold (definitely speech)
-	// 		isSpeech > SPEECH_THRESHOLD ||
-	// 		// Case 2: We are in the process of recording, and the probability is above the negative (exit) threshold
-	// 		(isRecording && isSpeech >= EXIT_THRESHOLD)
-	// 	)
-	// }
-
-	/**
-	 * Transcribe the audio buffer
-	 * @param {Float32Array} buffer The audio buffer
-	 * @param {Object} data Additional data
-	 */
-	const listen = async (buffer: Float32Array): Promise<void> => {
-		console.log("listen")
-
-		// 1. Transcribe the audio from the user
-		const result = await transcriber(buffer)
-		console.log({ result })
-
-		const text: string = Array.isArray(result)
-			? result[0]?.text?.trim() || ""
-			: result?.text?.trim() || ""
-
-		if (["", "[BLANK_AUDIO]"].includes(text)) {
-			// If the transcription is empty or a blank audio, we skip the rest of the processing
-			console.log("skip blank audio")
-			return
-		}
-		// messages.push({ role: "user", content: text })
-
-		self.postMessage({ type: "input", text })
-	}
 
 	// Track the number of samples after the last speech chunk
 	let postSpeechSamples = 0
@@ -127,8 +45,8 @@ import {
 			message: "Transcribing...",
 			duration: "until_next",
 		})
-		BUFFER.fill(0, offset)
-		bufferPointer = offset
+		asr.audioBuffer.fill(0, offset)
+		asr.bufferPointer = offset
 		isRecording = false
 		postSpeechSamples = 0
 	}
@@ -136,38 +54,41 @@ import {
 	const dispatchForTranscriptionAndResetAudioBuffer = (
 		overflow?: Float32Array,
 	): void => {
-		// Get start and end time of the speech segment, minus the padding
-		// const now: number = Date.now()
-		// const end: number =
-		// 	now -
-		// 	((postSpeechSamples + SPEECH_PAD_SAMPLES) / INPUT_SAMPLE_RATE) * 1000
-		// const start: number = end - (bufferPointer / INPUT_SAMPLE_RATE) * 1000
-		// const duration: number = end - start
 		const overflowLength: number = overflow?.length ?? 0
 
 		// Send the audio buffer to the worker
-		const buffer: Float32Array = BUFFER.slice(
+		const buffer: Float32Array = asr.audioBuffer.slice(
 			0,
-			bufferPointer + SPEECH_PAD_SAMPLES,
+			asr.bufferPointer + SPEECH_PAD_SAMPLES,
 		)
 
-		const prevLength: number = prevBuffers.reduce((acc, b) => acc + b.length, 0)
+		const prevLength: number = asr.prevBuffers.reduce(
+			(acc, b) => acc + b.length,
+			0,
+		)
 		const paddedBuffer: Float32Array = new Float32Array(
 			prevLength + buffer.length,
 		)
 		let offset = 0
-		for (const prev of prevBuffers) {
+		for (const prev of asr.prevBuffers) {
 			paddedBuffer.set(prev, offset)
 			offset += prev.length
 		}
 
 		paddedBuffer.set(buffer, offset)
 
-		listen(paddedBuffer)
+		transcribe(asr, paddedBuffer).then((text: string) => {
+			if (!text) {
+				// If the transcription is empty or a blank audio, we skip the rest of the processing
+				console.log("skip blank audio")
+			}
+
+			self.postMessage({ type: "input", text })
+		})
 
 		// Set overflow (if present) and reset the rest of the audio buffer
 		if (overflow) {
-			BUFFER.set(overflow, 0)
+			asr.audioBuffer.set(overflow, 0)
 		}
 		resetAfterRecording(overflowLength)
 	}
@@ -202,20 +123,20 @@ import {
 			// We are not recording, and the buffer is not speech,
 			// so we will probably discard the buffer. So, we insert
 			// into a FIFO queue with maximum size of PREV_BUFFER_SIZE
-			if (prevBuffers.length >= MAX_NUM_PREV_BUFFERS) {
+			if (asr.prevBuffers.length >= MAX_NUM_PREV_BUFFERS) {
 				// If the queue is full, we discard the oldest buffer
-				prevBuffers.shift()
+				asr.prevBuffers.shift()
 			}
-			prevBuffers.push(buffer)
+			asr.prevBuffers.push(buffer)
 			return
 		}
 
-		const remaining: number = BUFFER.length - bufferPointer
+		const remaining: number = asr.audioBuffer.length - asr.bufferPointer
 		if (buffer.length >= remaining) {
 			// The buffer is larger than (or equal to) the remaining space in the global buffer,
 			// so we perform transcription and copy the overflow to the global buffer
-			BUFFER.set(buffer.subarray(0, remaining), bufferPointer)
-			bufferPointer += remaining
+			asr.audioBuffer.set(buffer.subarray(0, remaining), asr.bufferPointer)
+			asr.bufferPointer += remaining
 
 			// Dispatch the audio buffer
 			const overflow: Float32Array = buffer.subarray(remaining)
@@ -225,8 +146,8 @@ import {
 
 		// The buffer is smaller than the remaining space in the global buffer,
 		// so we copy it to the global buffer
-		BUFFER.set(buffer, bufferPointer)
-		bufferPointer += buffer.length
+		asr.audioBuffer.set(buffer, asr.bufferPointer)
+		asr.bufferPointer += buffer.length
 
 		if (isSpeech) {
 			if (!isRecording) {
@@ -254,7 +175,7 @@ import {
 			return
 		}
 
-		if (bufferPointer < MIN_SPEECH_DURATION_SAMPLES) {
+		if (asr.bufferPointer < MIN_SPEECH_DURATION_SAMPLES) {
 			// The entire buffer (including the new chunk) is smaller than the minimum
 			// duration of a speech chunk, so we can safely discard the buffer.
 			resetAfterRecording()
@@ -263,4 +184,11 @@ import {
 
 		dispatchForTranscriptionAndResetAudioBuffer()
 	}
-})()
+}
+
+try {
+	worker()
+} catch (error) {
+	self.postMessage({ error })
+	throw error
+}

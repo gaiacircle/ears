@@ -11,7 +11,7 @@ import {
 	SPEECH_THRESHOLD,
 } from "../constants"
 
-type VoiceActivityDetection = {
+export type VoiceActivityDetection = {
 	model: PreTrainedModel
 	sampleRateTensor: Tensor
 	modelStateTensor: Tensor
