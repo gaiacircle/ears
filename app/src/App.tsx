@@ -1,22 +1,14 @@
-import { ChevronDown, PhoneOff } from "lucide-react"
+import { PhoneOff } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuPortal,
-	DropdownMenuRadioGroup,
-	DropdownMenuRadioItem,
-	DropdownMenuTrigger,
-} from "./components/ui/dropdown-menu.js"
 import { INPUT_SAMPLE_RATE } from "./constants.js"
 import WORKLET from "./play-worklet.js"
 import type {
 	FromWorkerMessage,
 	ToWorkerMessage,
-	Voice,
 } from "./listen-worker/types.js"
+import { useSmartAutoscroll } from "./hooks/useSmartAutoscroll.js"
 
 interface ListenWorker extends Worker {
 	postMessage(message: ToWorkerMessage, transfer: Transferable[]): void
@@ -26,14 +18,20 @@ interface ListenWorker extends Worker {
 	): void
 }
 
+type Verse = {
+	content: string
+}
+
 export default function App() {
+	const conversationRef = useRef<HTMLDivElement>(null)
 	const [callStartTime, setCallStartTime] = useState<number | null>(null)
 	const [callStarted, setCallStarted] = useState(false)
-	const [playing, setPlaying] = useState(false)
 
 	const [isListening, setIsListening] = useState(false)
 	const [listeningScale, setListeningScale] = useState(1)
 	const [ripples, setRipples] = useState<number[]>([])
+
+	const [conversation, setConversation] = useState<Verse[]>([])
 
 	const [ready, setReady] = useState(false)
 	const [error, setError] = useState<string | null>(null)
@@ -42,6 +40,13 @@ export default function App() {
 
 	const micStreamRef = useRef<MediaStream | null>(null)
 	const node = useRef<AudioWorkletNode | null>(null)
+
+	const scrollToEnd = useSmartAutoscroll(conversationRef)
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: change to conversation triggers scrollToEnd
+	useEffect(() => {
+		scrollToEnd()
+	}, [conversation])
 
 	useEffect(() => {
 		if (!callStarted) {
@@ -67,7 +72,6 @@ export default function App() {
 		setElapsedTime("00:00")
 	}, [callStarted, callStartTime])
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: one-time initialization
 	useEffect(() => {
 		worker.current ??= new Worker(
 			new URL("./listen-worker/worker.js", import.meta.url),
@@ -88,7 +92,10 @@ export default function App() {
 					setIsListening(false)
 					break
 				case "input":
-					console.log("input", data)
+					setConversation((conversation) => [
+						...conversation,
+						{ content: data.text },
+					])
 					break
 				case "error":
 					return setError(data.error.message)
@@ -181,7 +188,6 @@ export default function App() {
 
 				node.current.port.onmessage = (event: MessageEvent) => {
 					if (event.data.type === "playback-ended") {
-						setPlaying(false)
 						worker.current?.postMessage({ type: "playback-ended" })
 					}
 				}
@@ -259,55 +265,25 @@ export default function App() {
 	}
 
 	return (
-		<div className="h-screen min-h-[240px] flex items-center justify-center bg-gray-50 p-4 relative">
-			<div className="h-full max-h-[320px] w-[640px] bg-white rounded-xl shadow-lg p-8 flex items-center justify-between space-x-16">
-				<div className="relative flex items-center justify-center w-32 h-32 flex-shrink-0 aspect-square">
-					{callStarted &&
-						ripples.map((id) => (
-							<div
-								key={id}
-								className="absolute inset-0 rounded-full border-2 border-green-200 pointer-events-none"
-								style={{ animation: "ripple 1.5s ease-out forwards" }}
-							/>
-						))}
-					{/* Pulsing loader while initializing */}
-					<div
-						className={`absolute w-32 h-32 rounded-full ${
-							error ? "bg-red-200" : "bg-green-200"
-						} ${!ready ? "animate-ping opacity-75" : ""}`}
-						style={{ animationDuration: "1.5s" }}
+		<div className="h-screen flex flex-col items-center bg-gray-50 p-4 relative">
+			<div className="text-gray-700 text-4xl mt-4 mb-6">Gaia Circle</div>
+			<div className="flex w-full h-[20dvh] gap-4">
+				<div className="min-w-[260px] bg-white rounded-xl shadow-lg p-8 flex flex-wrap items-center justify-around">
+					<SpeechIndicator
+						callStarted={callStarted}
+						ripples={ripples}
+						error={error}
+						ready={ready}
+						isListening={isListening}
+						elapsedTime={elapsedTime}
+						listeningScale={listeningScale}
 					/>
-					{/* Main rings */}
-					<div
-						className={`absolute w-32 h-32 rounded-full shadow-inner transition-transform duration-300 ease-out ${
-							error ? "bg-red-200" : "bg-green-200"
-						} ${!ready ? "opacity-0" : ""}`}
-						style={{ transform: `scale(${listeningScale})` }}
-					/>
-					{/* Center text: show error if present, else existing statuses */}
-					<div
-						className={`absolute z-10 text-lg text-center ${
-							error ? "text-red-700" : "text-gray-700"
-						}`}
-					>
-						{error ? (
-							error
-						) : (
-							<>
-								{!ready && "Loading..."}
-								{isListening && `Listening... ${elapsedTime}`}
-							</>
-						)}
-					</div>
-				</div>
 
-				<div className="space-y-4 w-[140px]">
 					{callStarted ? (
 						<Button
 							onClick={() => {
 								setCallStarted(false)
 								setCallStartTime(null)
-								setPlaying(false)
 								setIsListening(false)
 							}}
 						>
@@ -317,7 +293,7 @@ export default function App() {
 					) : (
 						<Button
 							className={`${
-								ready ? "hover:bg-blue-200" : "opacity-50 cursor-not-allowed"
+								ready ? "hover:bg-blue-400" : "opacity-50 cursor-not-allowed"
 							}`}
 							onClick={handleStartCall}
 							disabled={!ready}
@@ -326,6 +302,88 @@ export default function App() {
 						</Button>
 					)}
 				</div>
+
+				<div
+					ref={conversationRef}
+					className="w-full h-full bg-white rounded-xl shadow-lg overflow-y-auto"
+				>
+					{conversation.map((verse, i) => (
+						// biome-ignore lint/suspicious/noArrayIndexKey: <explanation>
+						<div key={i} className="m-2 p-2">
+							{verse.content}
+						</div>
+					))}
+				</div>
+			</div>
+		</div>
+	)
+}
+
+interface SpeechIndicatorProps {
+	callStarted: boolean
+	ripples: number[]
+	error: string | null
+	ready: boolean
+	isListening: boolean
+	elapsedTime: string
+	listeningScale: number
+}
+
+function SpeechIndicator({
+	callStarted,
+	ripples,
+	error,
+	ready,
+	isListening,
+	elapsedTime,
+	listeningScale,
+}: SpeechIndicatorProps) {
+	return (
+		<div
+			className={
+				"relative flex items-center justify-center " +
+				"size-16 flex-shrink-0 aspect-square"
+			}
+		>
+			{callStarted &&
+				ripples.map((id) => (
+					<div
+						key={id}
+						className={
+							"absolute inset-0 rounded-full border-2 border-green-200 " +
+							"pointer-events-none"
+						}
+						style={{ animation: "ripple 1.5s ease-out forwards" }}
+					/>
+				))}
+			{/* Pulsing loader while initializing */}
+			<div
+				className={`absolute ${callStarted ? "size-16" : "size-4"} rounded-full ${
+					error ? "bg-red-200" : "bg-yellow-200"
+				} ${!ready ? "animate-ping opacity-75" : ""}`}
+				style={{ animationDuration: "1.5s" }}
+			/>
+			{/* Main rings */}
+			<div
+				className={`absolute ${callStarted ? "size-16" : "size-4"} rounded-full shadow-inner transition-transform duration-300 ease-out ${
+					error ? "bg-red-200" : "bg-green-200"
+				} ${!ready ? "opacity-0" : ""}`}
+				style={{ transform: `scale(${listeningScale})` }}
+			/>
+			{/* Center text: show error if present, else existing statuses */}
+			<div
+				className={`absolute z-10 text-md text-center ${
+					error ? "text-red-700" : "text-gray-700"
+				}`}
+			>
+				{error ? (
+					error
+				) : (
+					<>
+						{!ready && "Loading..."}
+						{isListening && `Listening... ${elapsedTime}`}
+					</>
+				)}
 			</div>
 		</div>
 	)
