@@ -38,7 +38,8 @@ export async function initAutomaticSpeechRecognition(): Promise<AutomaticSpeechR
 
 	const transcriber: AutomaticSpeechRecognitionPipeline = (await pipeline(
 		"automatic-speech-recognition",
-		"onnx-community/whisper-base",
+		"onnx-community/moonshine-base-ONNX",
+		// "onnx-community/whisper-base",
 		{
 			device,
 			dtype: DEVICE_DTYPE_CONFIGS[device as keyof typeof DEVICE_DTYPE_CONFIGS],
