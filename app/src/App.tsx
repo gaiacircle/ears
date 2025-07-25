@@ -139,7 +139,7 @@ export default function App() {
             ? (window.webkitAudioContext as typeof window.AudioContext)
             : window.AudioContext
 
-        inputAudioContext = new AudioContext({ sampleRate: INPUT_SAMPLE_RATE })
+        inputAudioContext = new AudioContext()
 
         const analyser = inputAudioContext.createAnalyser()
         analyser.fftSize = 256
@@ -152,6 +152,9 @@ export default function App() {
           new URL("./vad-processor.js", import.meta.url),
         )
         worklet = new AudioWorkletNode(inputAudioContext, "vad-processor", {
+          processorOptions: {
+            sampleRate: inputAudioContext.sampleRate,
+          },
           numberOfInputs: 1,
           numberOfOutputs: 0,
           channelCount: 1,
