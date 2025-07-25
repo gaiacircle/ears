@@ -49,3 +49,6 @@ export const AUDIO_CHUNK_SIZE: number = 512
  * The number of pre-roll audio chunks to keep, to ensure beginning audio isn't clipped
  */
 export const MAX_PRE_ROLL_QUEUE_SIZE: number = 10
+
+export const PARAKEET_ENDPOINT = "https://transcribe.halecraft.org/transcribe"
+export const PARAKEET_CLIENT_KEY = "rnmazn0TIvhuFrrdTpS9waky8"

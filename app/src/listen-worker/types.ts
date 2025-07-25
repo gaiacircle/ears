@@ -50,3 +50,24 @@ export type FromWorkerMessage =
       type: "error"
       error: Error
     }
+
+export type AutomaticSpeechRecognition = {
+  transcriber: (buffer: Float32Array) => Promise<string>
+  preRollQueue: AudioChunk[]
+  activeRecordingQueue: AudioChunk[]
+}
+
+export type AudioChunk = {
+  buffer: Float32Array
+  isSpeech: boolean
+}
+
+export type WorkerAction =
+  | { type: "enqueue-prev-buffer" }
+  | { type: "start-recording" }
+  | { type: "continue-recording" }
+  | {
+      type: "disptch-transcription"
+      overflow: AudioChunk[]
+    }
+  | { type: "discard-recording" }

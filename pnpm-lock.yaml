@@ -20,6 +20,9 @@ importers:
       '@huggingface/transformers':
         specifier: ^3.5.2
         version: 3.7.0
+      '@nrsk/unindent':
+        specifier: ^1.1.0
+        version: 1.1.0
       '@radix-ui/react-accordion':
         specifier: 1.2.2
         version: 1.2.2(@types/react-dom@19.1.6(@types/react@19.1.8))(@types/react@19.1.8)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -904,6 +907,9 @@ packages:
   '@npmcli/fs@4.0.0':
     resolution: {integrity: sha512-/xGlezI6xfGO9NwuJlnwz/K14qD1kCSAGtacBHnGzeAIuJGazcp45KP5NuyARXoKb7cwulAGWVsbeSxdG/cb0Q==}
     engines: {node: ^18.17.0 || >=20.5.0}
+
+  '@nrsk/unindent@1.1.0':
+    resolution: {integrity: sha512-/PYycrIyPrPOOHau5YQhO9ZorPGf0e1JJ3WpELJa5fUgk083pMtPMdeLG+V1FzBMblsoAVuMN+Uhjie+JxgsqA==}
 
   '@opentelemetry/api@1.9.0':
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
@@ -6031,6 +6037,8 @@ snapshots:
   '@npmcli/fs@4.0.0':
     dependencies:
       semver: 7.7.2
+
+  '@nrsk/unindent@1.1.0': {}
 
   '@opentelemetry/api@1.9.0': {}
 

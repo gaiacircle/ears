@@ -19,6 +19,7 @@ import {
   detectVoiceActivity,
   initVoiceActivityDetection,
 } from "./voice-activity-detection"
+import { initParakeetTranscriber } from "./parakeet-transcriber"
 
 function postMessage(message: FromWorkerMessage): void {
   self.postMessage(message)
@@ -33,7 +34,9 @@ const worker = async (): Promise<void> => {
   // Load models
   const vad = await initVoiceActivityDetection()
 
-  let asr = await initAutomaticSpeechRecognition()
+  let asr = await initAutomaticSpeechRecognition(
+    await initParakeetTranscriber(),
+  )
 
   postMessage({
     type: "ready",
@@ -55,6 +58,7 @@ const worker = async (): Promise<void> => {
     )
 
     transcribe(asr, audioForTranscription).then((text: string) => {
+      console.log("transcribe returned", text)
       if (!text) {
         // If the transcription is empty or a blank audio, we skip the rest of the processing
         console.log("skip blank audio")
