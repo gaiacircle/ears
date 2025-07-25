@@ -44,4 +44,9 @@ export default defineConfig({
 			"@": path.resolve(__dirname, "./src"),
 		},
 	},
+	server: {
+		proxy: {
+			"/trpc": "http://localhost:2022",
+		},
+	},
 })

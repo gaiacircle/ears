@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { INPUT_SAMPLE_RATE } from "@/constants.js"
 import { useSmartAutoscroll } from "@/hooks/useSmartAutoscroll.js"
 import { calculateRMS } from "@/lib/calculate-rms"
+import { trpc } from "./lib/trpc"
 
 interface ListenWorker extends Worker {
 	postMessage(message: ToWorkerMessage, transfer: Transferable[]): void
