@@ -1,6 +1,7 @@
+import { useEffect, useState } from "react"
+
 interface SpeechIndicatorProps {
 	callStarted: boolean
-	ripples: number[]
 	error: string | null
 	ready: boolean
 	isListening: boolean
@@ -10,13 +11,26 @@ interface SpeechIndicatorProps {
 
 export function SpeechIndicator({
 	callStarted,
-	ripples,
 	error,
 	ready,
 	isListening,
 	elapsedTime,
 	listeningScale,
 }: SpeechIndicatorProps) {
+	const [ripples, setRipples] = useState<number[]>([])
+
+	useEffect(() => {
+		if (!callStarted) return
+		const interval = setInterval(() => {
+			const id = Date.now()
+			setRipples((prev) => [...prev, id])
+			setTimeout(() => {
+				setRipples((prev) => prev.filter((r) => r !== id))
+			}, 1500)
+		}, 1000)
+		return () => clearInterval(interval)
+	}, [callStarted])
+
 	return (
 		<div
 			className={

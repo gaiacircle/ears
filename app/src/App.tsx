@@ -31,7 +31,6 @@ export default function App() {
 
 	const [isListening, setIsListening] = useState(false)
 	const [listeningScale, setListeningScale] = useState(1)
-	const [ripples, setRipples] = useState<number[]>([])
 
 	const [transcript, setTranscript] = useState<TranscriptEntry[]>([])
 	const [opportunityCards, setOpportunityCards] = useState<OpportunityCard[]>(
@@ -148,16 +147,6 @@ export default function App() {
 
 				const inputDataArray = new Uint8Array(analyser.frequencyBinCount)
 
-				function calculateRMS(array: Uint8Array) {
-					let sum = 0
-					for (let i = 0; i < array.length; ++i) {
-						const normalized = array[i] / 128 - 1
-						sum += normalized * normalized
-					}
-					const rms = Math.sqrt(sum / array.length)
-					return rms
-				}
-
 				await inputAudioContext.audioWorklet.addModule(
 					new URL("./vad-processor.js", import.meta.url),
 				)
@@ -236,18 +225,6 @@ export default function App() {
 		}
 	}, [callStarted])
 
-	useEffect(() => {
-		if (!callStarted) return
-		const interval = setInterval(() => {
-			const id = Date.now()
-			setRipples((prev) => [...prev, id])
-			setTimeout(() => {
-				setRipples((prev) => prev.filter((r) => r !== id))
-			}, 1500)
-		}, 1000)
-		return () => clearInterval(interval)
-	}, [callStarted])
-
 	const handleStartCall = async () => {
 		try {
 			const stream = await navigator.mediaDevices.getUserMedia({
@@ -277,7 +254,6 @@ export default function App() {
 				<div className="min-w-[260px] bg-white rounded-xl shadow-lg p-8 flex flex-wrap items-center justify-around">
 					<SpeechIndicator
 						callStarted={callStarted}
-						ripples={ripples}
 						error={error}
 						ready={ready}
 						isListening={isListening}
