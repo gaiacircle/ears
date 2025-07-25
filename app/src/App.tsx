@@ -14,7 +14,7 @@ import { TranscriptPanel } from "@/components/transcript-panel"
 import { Button } from "@/components/ui/button"
 import { INPUT_SAMPLE_RATE } from "@/constants.js"
 import { useSmartAutoscroll } from "@/hooks/useSmartAutoscroll.js"
-import WORKLET from "@/play-worklet.js"
+import { calculateRMS } from "@/lib/calculate-rms"
 
 interface ListenWorker extends Worker {
 	postMessage(message: ToWorkerMessage, transfer: Transferable[]): void
@@ -164,35 +164,6 @@ export default function App() {
 					worker.current?.postMessage({ type: "audio", buffer })
 				}
 
-				outputAudioContext = new AudioContext({
-					sampleRate: 24000,
-				})
-				outputAudioContext.resume()
-
-				const blob = new Blob([`(${WORKLET.toString()})()`], {
-					type: "application/javascript",
-				})
-				const url = URL.createObjectURL(blob)
-				await outputAudioContext.audioWorklet.addModule(url)
-				URL.revokeObjectURL(url)
-
-				node.current = new AudioWorkletNode(
-					outputAudioContext,
-					"buffered-audio-worklet-processor",
-				)
-
-				node.current.port.onmessage = (event: MessageEvent) => {
-					if (event.data.type === "playback-ended") {
-						worker.current?.postMessage({ type: "playback-ended" })
-					}
-				}
-
-				const outputAnalyser = outputAudioContext.createAnalyser()
-				outputAnalyser.fftSize = 256
-
-				node.current.connect(outputAnalyser)
-				outputAnalyser.connect(outputAudioContext.destination)
-
 				function updateVisualizers() {
 					analyser.getByteTimeDomainData(inputDataArray)
 					const rms = calculateRMS(inputDataArray)
@@ -285,7 +256,10 @@ export default function App() {
 					)}
 				</div>
 
-				<TranscriptPanel transcript={transcript} transcriptRef={transcriptRef} />
+				<TranscriptPanel
+					transcript={transcript}
+					transcriptRef={transcriptRef}
+				/>
 			</div>
 		</div>
 	)
