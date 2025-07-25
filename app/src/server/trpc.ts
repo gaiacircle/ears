@@ -84,6 +84,7 @@ export const appRouter = t.router({
 							
 							Only return opportunities that are clearly identifiable and would genuinely help the conversation based on the most recent message.
               Do not repeat opportunities that have already been given.
+              Do not ask questions.
 							If no clear opportunities exist, return an empty array.
 						`,
           },

@@ -44,6 +44,29 @@ export default function App() {
 
   const chatMutation = trpc.chat.useMutation()
 
+  useEffect(() => {
+    // window.onkeydown((ev) => {})
+    const action = (ev: KeyboardEvent) => {
+      console.log({ ev })
+      if (ev.key === "y" && (ev.metaKey || ev.ctrlKey)) {
+        const id = uuid()
+        setOpportunityCards((cards) => [
+          ...cards,
+          {
+            id,
+            timestamp: Date.now(),
+            content: uuid(),
+            explanation: id,
+            trigger: "key",
+            type: "question",
+          },
+        ])
+      }
+    }
+    window.addEventListener("keydown", action)
+    return () => window.removeEventListener("keydown", action)
+  }, [])
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
     console.log("transcript at useEffect", transcript)
@@ -242,52 +265,54 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col items-center bg-gray-50 p-4 relative">
-      <div className="text-gray-700 text-4xl mt-4 mb-6">Gaia Circle</div>
-      <div className="flex w-full h-[20dvh] gap-4">
-        <div className="min-w-[260px] bg-white rounded-xl shadow-sm p-8 flex flex-wrap items-center justify-around">
-          <SpeechIndicator
-            callStarted={callStarted}
-            error={error}
-            ready={ready}
-            isListening={isListening}
-            elapsedTime={elapsedTime}
-            listeningScale={listeningScale}
-          />
+    <div className="h-screen w-full bg-gray-50 px-4 flex flex-col items-center">
+      <div className="h-screen w-full max-w-[800px] py-4 flex flex-col items-center justify-center">
+        <div className="text-gray-700 text-4xl mt-4 mb-6">Gaia Circle</div>
+        <div className="flex w-full h-[20dvh] gap-4">
+          <div className="min-w-[260px] bg-white rounded-xl shadow-sm p-4 flex flex-wrap items-center justify-around">
+            <SpeechIndicator
+              callStarted={callStarted}
+              error={error}
+              ready={ready}
+              isListening={isListening}
+              elapsedTime={elapsedTime}
+              listeningScale={listeningScale}
+            />
 
-          {callStarted ? (
-            <Button
-              onClick={() => {
-                setCallStarted(false)
-                setCallStartTime(null)
-                setIsListening(false)
-              }}
-            >
-              <PhoneOff className="w-5 h-5" />
-              <span>End call</span>
-            </Button>
-          ) : (
-            <Button
-              className={`${
-                ready ? "hover:bg-blue-400" : "opacity-50 cursor-not-allowed"
-              }`}
-              onClick={handleStartCall}
-              disabled={!ready}
-            >
-              <span>Start call</span>
-            </Button>
-          )}
+            {callStarted ? (
+              <Button
+                onClick={() => {
+                  setCallStarted(false)
+                  setCallStartTime(null)
+                  setIsListening(false)
+                }}
+              >
+                <PhoneOff className="w-5 h-5" />
+                <span>End session</span>
+              </Button>
+            ) : (
+              <Button
+                className={`${
+                  ready ? "hover:bg-blue-400" : "opacity-50 cursor-not-allowed"
+                }`}
+                onClick={handleStartCall}
+                disabled={!ready}
+              >
+                <span>Start assistant</span>
+              </Button>
+            )}
+          </div>
+
+          <TranscriptPanel transcript={transcript} />
         </div>
 
-        <TranscriptPanel transcript={transcript} />
+        <OpportunityPanel
+          opportunityCards={opportunityCards}
+          dismissCard={(...args) => {
+            console.log("dismiss", args)
+          }}
+        />
       </div>
-
-      <OpportunityPanel
-        opportunityCards={opportunityCards}
-        dismissCard={(...args) => {
-          console.log("dismiss", args)
-        }}
-      />
     </div>
   )
 }

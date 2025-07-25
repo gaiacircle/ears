@@ -48,7 +48,9 @@ export function OpportunityPanel({
   const scrollToEnd = useSmartAutoscroll(panelRef)
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: any change to the transcript triggers scrollToEnd
-  useEffect(scrollToEnd, [opportunityCards])
+  useEffect(() => {
+    setTimeout(scrollToEnd, 100)
+  }, [opportunityCards])
 
   /* Opportunity Cards Panel */
   return (
@@ -82,7 +84,7 @@ export function OpportunityPanel({
           opportunityCards.map((card) => (
             <Card
               key={card.id}
-              className={`${getCardColor(card.type)} transition-all duration-300 hover:shadow-md`}
+              className={`mb-4 ${getCardColor(card.type)} transition-all duration-300 hover:shadow-md`}
             >
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
