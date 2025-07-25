@@ -40,8 +40,9 @@ export async function initAutomaticSpeechRecognition(): Promise<AutomaticSpeechR
 
   const transcriber: AutomaticSpeechRecognitionPipeline = (await pipeline(
     "automatic-speech-recognition",
-    "onnx-community/moonshine-base-ONNX",
+    // "onnx-community/moonshine-base-ONNX",
     // "onnx-community/whisper-base",
+    "onnx-community/lite-whisper-large-v3-turbo-fast-ONNX",
     {
       device,
       dtype: DEVICE_DTYPE_CONFIGS[device],
@@ -210,7 +211,7 @@ export async function transcribe(
   asr: AutomaticSpeechRecognition,
   buffer: Float32Array,
 ): Promise<string> {
-  const result = await asr.transcriber(buffer, { language: "en" })
+  const result = await asr.transcriber(buffer)
 
   const first = Array.isArray(result) ? result[0] : result
 
