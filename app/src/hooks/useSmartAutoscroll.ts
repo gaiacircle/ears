@@ -28,7 +28,6 @@ export function useSmartAutoscroll(
 
   const scrollToEnd = useCallback(() => {
     const container = ref.current
-    console.log("scrollToEnd", container, container?.lastElementChild, isStuck)
     if (isStuck && container) {
       const lastElement = container.lastElementChild
       if (lastElement) {
