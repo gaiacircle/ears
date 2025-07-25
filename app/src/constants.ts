@@ -22,7 +22,7 @@ export const EXIT_THRESHOLD: number = 0.1
  */
 export const MIN_SILENCE_DURATION_MS: number = 400
 export const MIN_SILENCE_DURATION_SAMPLES: number =
-	MIN_SILENCE_DURATION_MS * INPUT_SAMPLE_RATE_MS
+  MIN_SILENCE_DURATION_MS * INPUT_SAMPLE_RATE_MS
 
 /**
  * Pad the speech chunk with this amount each side

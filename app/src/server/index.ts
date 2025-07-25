@@ -1,6 +1,5 @@
-// src/server/index.ts
-import express from "express"
 import { createExpressMiddleware } from "@trpc/server/adapters/express"
+import express from "express"
 import { appRouter } from "./trpc.js"
 
 const app = express()
