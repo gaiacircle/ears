@@ -1,6 +1,5 @@
 import {
-  AutoModel,
-  type PreTrainedModel,
+  PreTrainedModel,
   PretrainedConfig,
   Tensor,
 } from "@huggingface/transformers"
@@ -22,9 +21,10 @@ export async function initVoiceActivityDetection(
 ): Promise<VoiceActivityDetection> {
   let model: PreTrainedModel
   try {
-    model = await AutoModel.from_pretrained("onnx-community/silero-vad", {
-      config: new PretrainedConfig({ model_type: "custom" }),
+    // This is an AutoModel, but we use PreTrainedModel directly to avoid a warning about 'custom' model not supported
+    model = await PreTrainedModel.from_pretrained("onnx-community/silero-vad", {
       dtype: "fp32", // Full-precision
+      config: new PretrainedConfig({ model_type: "custom" }),
     })
   } catch (error) {
     onError?.(error)
