@@ -105,16 +105,27 @@ export function OpportunityPanel({
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-slate-800">
-                    {card.content}
-                  </p>
-                  <p className="text-xs text-slate-600 italic">
-                    {card.explanation}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {new Date(card.timestamp).toLocaleTimeString()}
-                  </p>
+                <div className="flex gap-4">
+                  <div className="flex-1/2 space-y-2">
+                    <p className="text-sm font-medium text-slate-800">
+                      {card.content}
+                    </p>
+                    <p className="text-xs text-slate-600 italic">
+                      {card.explanation}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {new Date(card.timestamp).toLocaleTimeString()}
+                    </p>
+                  </div>
+                  {card.imageUrl && (
+                    <div className="flex-1/2">
+                      <img
+                        className="object-cover rounded-md"
+                        src={card.imageUrl}
+                        alt="generated"
+                      />
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

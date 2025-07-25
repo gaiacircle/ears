@@ -1,9 +1,10 @@
 import { createExpressMiddleware } from "@trpc/server/adapters/express"
 import express from "express"
 
-import { appRouter } from "./trpc.js"
-
+// Important: import before other local code
 import "./environ"
+
+import { appRouter } from "./trpc.js"
 
 const app = express()
 

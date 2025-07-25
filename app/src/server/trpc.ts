@@ -3,6 +3,9 @@ import { initTRPC } from "@trpc/server"
 import { generateObject } from "ai"
 import { z } from "zod"
 import { uuidv7 as uuid } from "uuidv7"
+import Together from "together-ai"
+
+const together = new Together({ apiKey: process.env.TOGETHER_AI_API_KEY })
 
 const togetherai = createTogetherAI({
   apiKey: process.env.TOGETHER_AI_API_KEY,
@@ -15,6 +18,7 @@ const OpportunityBaseSchema = z.object({
   trigger: z.string(),
   content: z.string(),
   explanation: z.string(),
+  imageUrl: z.string().optional(),
 })
 
 const OpportunityInferenceSchema = z.object({
@@ -66,7 +70,7 @@ export const appRouter = t.router({
 							- Make it contextually relevant and unobtrusive
 							- Respond in no more than a dozen words
 							
-              For context only:
+              Previous context:
 
               <context-opportunities-already-given>
               ${recentOpportunities.join("\n\n")}
@@ -76,23 +80,45 @@ export const appRouter = t.router({
 							${transcript.join("\n\n")}
 							</context-transcript>
 
-              The focus of our analysis:
-
-              <most-recent-message>
-              ${mostRecentMessage}
-              </most-recent-message>
-							
 							Only return opportunities that are clearly identifiable and would genuinely help the conversation based on the most recent message.
               Do not repeat opportunities that have already been given.
               Do not ask questions.
 							If no clear opportunities exist, return an empty array.
 						`,
           },
-          ...recentMessages.map((m) => ({ role: "user" as const, content: m })),
+          {
+            role: "user",
+            content: mostRecentMessage,
+          },
         ],
       })
+
+      const imageEnhancedOpps: typeof object.opportunities = []
+      for (const opp of object.opportunities) {
+        if (opp.type === "generative") {
+          const response = await together.images.create({
+            model: "black-forest-labs/FLUX.1-pro",
+            prompt: `${mostRecentMessage}\n\n${opp.content}`,
+            steps: 10,
+            n: 4,
+            response_format: "url",
+          })
+
+          const firstResponse = response.data[0]
+
+          if ("url" in firstResponse) {
+            const imageUrl = firstResponse.url
+            imageEnhancedOpps.push({ ...opp, imageUrl })
+            continue
+          }
+        }
+        imageEnhancedOpps.push(opp)
+      }
+
+      console.log({ imageEnhancedOpps })
+
       return {
-        opportunities: object.opportunities.map((o) => ({
+        opportunities: imageEnhancedOpps.map((o) => ({
           ...o,
           id: uuid(),
           timestamp: Date.now(),
@@ -100,4 +126,5 @@ export const appRouter = t.router({
       }
     }),
 })
+
 export type AppRouter = typeof appRouter

@@ -8,5 +8,4 @@ const projectPath = path.resolve(
 
 dotenv.config({
   path: projectPath,
-  quiet: true,
 })
