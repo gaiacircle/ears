@@ -2,18 +2,15 @@ import { PhoneOff } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { uuidv7 as uuid } from "uuidv7"
 
-import type {
-  FromWorkerMessage,
-  ToWorkerMessage,
-} from "@/listen-worker/types.js"
-import type { OpportunityCard } from "@/types/opportunity-card.js"
-import type { TranscriptEntry } from "@/types/transcript-entry.js"
+import type { FromWorkerMessage, ToWorkerMessage } from "@/listen-worker/types"
+import type { OpportunityCard } from "@/types/opportunity-card"
+import type { TranscriptEntry } from "@/types/transcript-entry"
 
-import { SpeechIndicator } from "@/components/speech-indicator.js"
+import { SpeechIndicator } from "@/components/speech-indicator"
 import { TranscriptPanel } from "@/components/transcript-panel"
 import { Button } from "@/components/ui/button"
-import { INPUT_SAMPLE_RATE } from "@/constants.js"
-import { useSmartAutoscroll } from "@/hooks/useSmartAutoscroll.js"
+import { INPUT_SAMPLE_RATE } from "@/constants"
+import { useSmartAutoscroll } from "@/hooks/use-smart-autoscroll"
 import { calculateRMS } from "@/lib/calculate-rms"
 import { trpc } from "./lib/trpc"
 
