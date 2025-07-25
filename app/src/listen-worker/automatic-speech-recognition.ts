@@ -68,7 +68,6 @@ export function handleAudioChunk(
   if (!isRecording && !isSpeech) {
     const preRollQueue = [...asr.preRollQueue, newChunk]
     if (preRollQueue.length > MAX_PRE_ROLL_QUEUE_SIZE) {
-      console.log("shift pre-roll", preRollQueue.length)
       preRollQueue.shift()
     }
     return {

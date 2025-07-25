@@ -5,6 +5,8 @@ import type { OpportunityCard } from "@/types/opportunity-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useEffect, useRef } from "react"
+import { useSmartAutoscroll } from "@/hooks/use-smart-autoscroll"
 
 const getCardIcon = (type: string) => {
   switch (type) {
@@ -41,9 +43,19 @@ export function OpportunityPanel({
   opportunityCards,
   dismissCard,
 }: OpportunityParams) {
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  const scrollToEnd = useSmartAutoscroll(panelRef)
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: any change to the transcript triggers scrollToEnd
+  useEffect(scrollToEnd, [opportunityCards])
+
   /* Opportunity Cards Panel */
   return (
-    <div className="space-y-4">
+    <div
+      className="w-full h-full mt-8 flex flex-col gap-4 overflow-y-auto"
+      ref={panelRef}
+    >
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Assistant Cards</CardTitle>
@@ -53,7 +65,7 @@ export function OpportunityPanel({
         </CardHeader>
       </Card>
 
-      <div className="space-y-4 max-h-[520px] overflow-y-auto">
+      <div className="space-y-4">
         {opportunityCards.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="p-6 text-center">

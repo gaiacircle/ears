@@ -13,6 +13,7 @@ import { INPUT_SAMPLE_RATE } from "@/constants"
 import { useSmartAutoscroll } from "@/hooks/use-smart-autoscroll"
 import { calculateRMS } from "@/lib/calculate-rms"
 import { trpc } from "./lib/trpc"
+import { OpportunityPanel } from "./components/opportunity-panel"
 
 interface ListenWorker extends Worker {
   postMessage(message: ToWorkerMessage, transfer: Transferable[]): void
@@ -23,7 +24,6 @@ interface ListenWorker extends Worker {
 }
 
 export default function App() {
-  const transcriptRef = useRef<HTMLDivElement>(null)
   const [callStartTime, setCallStartTime] = useState<number | null>(null)
   const [callStarted, setCallStarted] = useState(false)
 
@@ -34,7 +34,6 @@ export default function App() {
   const [opportunityCards, setOpportunityCards] = useState<OpportunityCard[]>(
     [],
   )
-  const [isProcessing, setIsProcessing] = useState(false)
 
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,13 +41,34 @@ export default function App() {
   const worker = useRef<ListenWorker | null>(null)
 
   const micStreamRef = useRef<MediaStream | null>(null)
-  const node = useRef<AudioWorkletNode | null>(null)
 
-  const scrollToEnd = useSmartAutoscroll(transcriptRef)
+  const chatMutation = trpc.chat.useMutation()
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: any change to the transcript triggers scrollToEnd
+  // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
-    scrollToEnd()
+    console.log("transcript at useEffect", transcript)
+
+    const recentMessages = transcript.slice(-3).map((e) => e.text)
+
+    console.log("recentMessages", recentMessages)
+
+    if (recentMessages.length > 0) {
+      chatMutation.mutate(
+        {
+          recentMessages,
+          recentOpportunities: opportunityCards.slice(-3).map((o) => o.content),
+        },
+        {
+          onSuccess(data, variables, context) {
+            const opportunities = data.opportunities
+
+            console.log({ opportunities })
+
+            setOpportunityCards((cards) => [...cards, ...opportunities])
+          },
+        },
+      )
+    }
   }, [transcript])
 
   useEffect(() => {
@@ -95,10 +115,12 @@ export default function App() {
           setIsListening(false)
           break
         case "input":
-          setTranscript((transcript) => [
-            ...transcript,
-            { id: uuid(), text: data.text, timestamp: Date.now() },
-          ])
+          {
+            setTranscript((transcript) => [
+              ...transcript,
+              { id: uuid(), text: data.text, timestamp: Date.now() },
+            ])
+          }
           break
         case "error":
           return setError(data.error.message)
@@ -223,7 +245,7 @@ export default function App() {
     <div className="h-screen flex flex-col items-center bg-gray-50 p-4 relative">
       <div className="text-gray-700 text-4xl mt-4 mb-6">Gaia Circle</div>
       <div className="flex w-full h-[20dvh] gap-4">
-        <div className="min-w-[260px] bg-white rounded-xl shadow-lg p-8 flex flex-wrap items-center justify-around">
+        <div className="min-w-[260px] bg-white rounded-xl shadow-sm p-8 flex flex-wrap items-center justify-around">
           <SpeechIndicator
             callStarted={callStarted}
             error={error}
@@ -257,11 +279,15 @@ export default function App() {
           )}
         </div>
 
-        <TranscriptPanel
-          transcript={transcript}
-          transcriptRef={transcriptRef}
-        />
+        <TranscriptPanel transcript={transcript} />
       </div>
+
+      <OpportunityPanel
+        opportunityCards={opportunityCards}
+        dismissCard={(...args) => {
+          console.log("dismiss", args)
+        }}
+      />
     </div>
   )
 }
