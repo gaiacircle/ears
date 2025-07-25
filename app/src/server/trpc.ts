@@ -115,8 +115,6 @@ export const appRouter = t.router({
         imageEnhancedOpps.push(opp)
       }
 
-      console.log({ imageEnhancedOpps })
-
       return {
         opportunities: imageEnhancedOpps.map((o) => ({
           ...o,

@@ -36,13 +36,15 @@ export type WorkerAction =
 export async function initAutomaticSpeechRecognition(): Promise<AutomaticSpeechRecognition> {
   const device = await detectDevice()
 
+  console.log("ASR using device", device)
+
   const transcriber: AutomaticSpeechRecognitionPipeline = (await pipeline(
     "automatic-speech-recognition",
     "onnx-community/moonshine-base-ONNX",
     // "onnx-community/whisper-base",
     {
       device,
-      dtype: DEVICE_DTYPE_CONFIGS[device as keyof typeof DEVICE_DTYPE_CONFIGS],
+      dtype: DEVICE_DTYPE_CONFIGS[device],
     },
     // biome-ignore lint/suspicious/noExplicitAny: avoids TS inference infinite loop
   )) as any

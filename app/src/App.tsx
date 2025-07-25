@@ -46,7 +46,6 @@ export default function App() {
   useEffect(() => {
     // window.onkeydown((ev) => {})
     const action = (ev: KeyboardEvent) => {
-      console.log({ ev })
       if (ev.key === "y" && (ev.metaKey || ev.ctrlKey)) {
         const id = uuid()
         setOpportunityCards((cards) => [
@@ -68,11 +67,7 @@ export default function App() {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
-    console.log("transcript at useEffect", transcript)
-
     const recentMessages = transcript.slice(-3).map((e) => e.text)
-
-    console.log("recentMessages", recentMessages)
 
     if (recentMessages.length > 0) {
       chatMutation.mutate(
@@ -83,8 +78,6 @@ export default function App() {
         {
           onSuccess(data, variables, context) {
             const opportunities = data.opportunities
-
-            console.log({ opportunities })
 
             setOpportunityCards((cards) => [...cards, ...opportunities])
           },
