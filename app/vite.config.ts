@@ -17,6 +17,7 @@ export default defineConfig({
       promiseImportName: (i) => `__tla_${i}`,
     }),
     viteStaticCopy({
+      // Copy WASM files to public/wasm for VAD
       targets: [
         {
           src: "./node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.mjs",
@@ -34,7 +35,7 @@ export default defineConfig({
   },
   worker: {
     format: "es",
-    plugins: [wasm(), topLevelAwait()],
+    plugins: () => [wasm(), topLevelAwait()],
   },
   resolve: {
     // Only bundle a single instance of Transformers.js
