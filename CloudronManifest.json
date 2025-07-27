@@ -1,0 +1,16 @@
+{
+  "id": "com.github.gaiacircle",
+  "title": "Gaia Circle",
+  "author": "Duane Johnson",
+  "description": "An application for real-time transcription and conversation assist.",
+  "tagline": "Real-time transcription and analysis",
+  "version": "1.0.0",
+  "healthCheckPath": "/",
+  "httpPort": 80,
+  "manifestVersion": 2,
+  "website": "https://github.com//gaiacircle/ears",
+  "icon": "logo.png",
+  "addons": {
+    "localstorage": {}
+  }
+}
