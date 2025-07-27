@@ -39,7 +39,6 @@ export default defineConfig({
   },
   resolve: {
     // Only bundle a single instance of Transformers.js
-    // (shared by "@huggingface/transformers" and "kokoro")
     dedupe: ["@huggingface/transformers"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -49,5 +48,8 @@ export default defineConfig({
     proxy: {
       "/trpc": "http://localhost:2022",
     },
+    host: process.env.VITE_HOST || "localhost",
+    port: Number.parseInt(process.env.VITE_PORT || "5173"),
+    allowedHosts: true
   },
 })
