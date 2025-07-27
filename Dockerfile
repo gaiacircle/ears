@@ -1,0 +1,53 @@
+# Multi-stage build for the web application.
+
+# 1. Build Stage: Compiles the application and installs all dependencies.
+FROM node:20-slim AS builder
+WORKDIR /app
+
+# Copy package manager files to leverage Docker cache
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY app/package.json ./app/
+COPY packages/kokoro/package.json ./packages/kokoro/
+
+# Install pnpm globally.
+RUN npm install -g pnpm
+
+# Install build tools for native modules.
+RUN apt-get update && apt-get install -y build-essential
+
+# Install all dependencies (dev and prod) for the entire workspace
+# Using --frozen-lockfile to ensure reproducible installs.
+# Using a cache mount for pnpm's store to speed up builds.
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
+
+# Copy the rest of the application source code
+COPY . .
+
+# Run the build script from the root `package.json`.
+# This is expected to build the `app` workspace package.
+RUN pnpm build
+
+# Create a self-contained deployment package for the 'app' service.
+# The `deploy` command copies the necessary files and creates a flat node_modules.
+RUN pnpm --filter gaia-circle deploy --prod /deploy
+
+# 2. Final Stage: Creates a lean production image.
+FROM node:20-slim
+WORKDIR /app
+
+# Install supervisor and caddy.
+RUN apt-get update && apt-get install -y supervisor caddy
+
+# Copy the supervisor and caddy configurations.
+COPY app/config/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY app/config/Caddyfile /etc/caddy/Caddyfile
+
+# Copy the entire deployed application from the builder stage.
+COPY --from=builder /deploy .
+
+
+# Expose the application port.
+EXPOSE 80
+
+# Set the command to start the production server.
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

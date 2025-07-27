@@ -1,0 +1,19 @@
+:80 {
+	# Handle API requests by proxying them to the backend Node.js server.
+	handle /trpc* {
+		reverse_proxy localhost:2022
+	}
+
+	# Handle all other requests by serving the static frontend files.
+	handle {
+		root * /app/dist
+
+		# try_files is essential for Single-Page Applications (SPAs). It attempts
+		# to find a file matching the request URI, and if it can't, it serves
+		# /index.html. This allows your client-side router to take over.
+		try_files {path} /index.html
+
+		# Serve the file (either the one requested or index.html).
+		file_server
+	}
+}
