@@ -56,7 +56,6 @@
     "dotenv": "^17.2.1",
     "embla-carousel-react": "^8.6.0",
     "express": "^5.1.0",
-    "kokoro": "workspace:*",
     "lucide-react": "^0.503.0",
     "react": "^19.0.0",
     "react-day-picker": "^9.8.0",
