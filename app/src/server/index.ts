@@ -2,7 +2,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express"
 import express from "express"
 
 // Important: import before other local code
-import "./environ"
+import "./environ.js"
 
 import { appRouter } from "./trpc.js"
 

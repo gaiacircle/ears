@@ -13,6 +13,8 @@ import { INPUT_SAMPLE_RATE } from "@/constants"
 import { calculateRMS } from "@/lib/calculate-rms"
 import { trpc } from "./lib/trpc"
 import { OpportunityPanel } from "./components/opportunity-panel"
+import vadProcessorUrl from "./vad-processor.js?worker&url"
+import listenWorkerUrl from "./listen-worker/worker.js?worker&url"
 
 interface ListenWorker extends Worker {
   postMessage(message: ToWorkerMessage, transfer: Transferable[]): void
@@ -111,12 +113,7 @@ export default function App() {
   }, [callStarted, callStartTime])
 
   useEffect(() => {
-    worker.current ??= new Worker(
-      new URL("./listen-worker/worker.js", import.meta.url),
-      {
-        type: "module",
-      },
-    )
+    worker.current ??= new Worker(listenWorkerUrl, { type: "module" })
 
     const onMessage = ({ data }: { data: FromWorkerMessage }) => {
       switch (data.type) {
@@ -182,9 +179,7 @@ export default function App() {
 
         const inputDataArray = new Uint8Array(analyser.frequencyBinCount)
 
-        await inputAudioContext.audioWorklet.addModule(
-          new URL("./vad-processor.js", import.meta.url),
-        )
+        await inputAudioContext.audioWorklet.addModule(vadProcessorUrl)
         worklet = new AudioWorkletNode(inputAudioContext, "vad-processor", {
           processorOptions: {
             sampleRate: inputAudioContext.sampleRate,
