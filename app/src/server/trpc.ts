@@ -20,10 +20,9 @@ const replicate = new Replicate()
 const t = initTRPC.create()
 
 const OpportunityBaseSchema = z.object({
-  type: z.enum(["question", "memory", "generative"]),
+  type: z.enum(["question", "search", "generative"]),
   trigger: z.string(),
   content: z.string(),
-  explanation: z.string(),
 })
 
 const OpportunityInferenceSchema = z.object({
@@ -45,34 +44,17 @@ export const appRouter = t.router({
         {
           role: "system" as const,
           content: unindent(`
-            Analyze this conversation transcript and identify opportunities for assistance based on the most recent message. 
-            Look for these specific types:
-            
-            1. QUESTION/UNKNOWN: When speakers express ignorance or ask questions they don't know the answer to
-              - Examples: "I wonder if...", "Do you know...", "Is there a way to..."
-            
-            2. MEMORY RETRIEVAL: When speakers try to recall something specific but can't fully remember
-              - Examples: "I saw this article...", "There was this study...", "I read somewhere..."
-            
-            3. GENERATIVE MOMENT: When speakers engage in "what if" scenarios or imagine something that doesn't exist
-              - Examples: "What if we could...", "Imagine if...", "Picture this..."
-            
-            For each opportunity found:
-            - Generate helpful content (search results, explanations, or creative descriptions)
-            - Explain why this card appeared based on what was said
-            - Make it contextually relevant and unobtrusive
-            - Respond in no more than a dozen words
-            
-            Previous context:
+            Analyze the transcript for opportunities to help. For each new user message, classify as:
+            1. QUESTION/UNKNOWN - static, widely-known, or derivable → answer from memory.
+              (includes classics like “Do you know…?” “What was the name…?”)
+            2. SEARCH RETRIEVAL - time-sensitive, live, or domain-specific → external lookup required.
+              (includes “I read somewhere…,” “current price,” “next flight”)
+            3. GENERATIVE MOMENT - visual, imaginative, hypothetical.
 
-            <context-opportunities-already-given>
+            Tag only the exact category, supply concise help, explain what triggered it, ≤12 words, skip repeats, else [].
+
+            Previous help already presented to user:
             ${recentOpportunities.join("\n\n")}
-            </context-opportunities-already-given>
-
-            Only return opportunities that are clearly identifiable and would genuinely help the conversation based on the most recent message.
-            Do not repeat opportunities that have already been given.
-            Do not ask questions.
-            If no clear opportunities exist, return an empty array.
 					`),
         },
         ...recentMessages.map((m) => ({

@@ -111,7 +111,7 @@ export function OpportunityPanel({
                       {card.content}
                     </p>
                     <p className="text-xs text-slate-600 italic">
-                      {card.explanation}
+                      {card.trigger}
                     </p>
                     <p className="text-xs text-slate-500">
                       {new Date(card.timestamp).toLocaleTimeString()}
