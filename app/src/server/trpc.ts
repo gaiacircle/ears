@@ -39,6 +39,8 @@ export const appRouter = t.router({
       }),
     )
     .mutation(async ({ input: { recentMessages, recentOpportunities } }) => {
+      const mostRecentMessage = recentMessages[recentMessages.length - 1]
+
       const messages = [
         {
           role: "system" as const,
@@ -107,7 +109,7 @@ export const appRouter = t.router({
           const output = (await replicate.run(
             "black-forest-labs/flux-schnell",
             {
-              input: { prompt: `${recentMessages[0]}\n\n${opp.content}` },
+              input: { prompt: `${mostRecentMessage}\n\n${opp.content}` },
             },
           )) as { url: () => { href: string } }[]
 
