@@ -14,9 +14,9 @@
     "typecheck": "tsc --noEmit --skipLibCheck"
   },
   "dependencies": {
-    "@ai-sdk/togetherai": "^0.2.16",
     "@huggingface/transformers": "^3.5.2",
     "@nrsk/unindent": "^1.1.0",
+    "@openrouter/ai-sdk-provider": "^0.7.3",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
     "@radix-ui/react-aspect-ratio": "1.1.1",
@@ -61,10 +61,10 @@
     "react-day-picker": "^9.8.0",
     "react-dom": "^19.0.0",
     "recharts": "^3.1.0",
+    "replicate": "^1.0.1",
     "smooth-scroll-into-view-if-needed": "^2.0.2",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
-    "together-ai": "^0.21.0",
     "uuidv7": "^1.0.2",
     "zod": "^3.25.76"
   },

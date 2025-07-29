@@ -12,6 +12,7 @@ dist
 dist-server
 *.local
 app/public/models/
+best
 .env
 
 # Editor directories and files

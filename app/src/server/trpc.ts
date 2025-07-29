@@ -1,16 +1,21 @@
-import { createTogetherAI } from "@ai-sdk/togetherai"
 import { initTRPC } from "@trpc/server"
 import { generateObject } from "ai"
+import { createOpenRouter } from "@openrouter/ai-sdk-provider"
+import Replicate from "replicate" // for image gen
 import { z } from "zod"
 import { uuidv7 as uuid } from "uuidv7"
-import Together from "together-ai"
 import unindent from "@nrsk/unindent"
 
-const together = new Together({ apiKey: process.env.TOGETHER_AI_API_KEY })
-
-const togetherai = createTogetherAI({
-  apiKey: process.env.TOGETHER_AI_API_KEY,
+const openrouter = createOpenRouter({
+  apiKey: process.env.OPENROUTER_API_KEY,
+  extraBody: {
+    provider: {
+      only: ["novita"],
+    },
+  },
 })
+
+const replicate = new Replicate()
 
 const t = initTRPC.create()
 
@@ -19,7 +24,6 @@ const OpportunityBaseSchema = z.object({
   trigger: z.string(),
   content: z.string(),
   explanation: z.string(),
-  imageUrl: z.string().optional(),
 })
 
 const OpportunityInferenceSchema = z.object({
@@ -30,18 +34,11 @@ export const appRouter = t.router({
   chat: t.procedure
     .input(
       z.object({
-        recentMessages: z.string().array(),
+        recentMessages: z.string().array().min(1),
         recentOpportunities: z.string().array(),
       }),
     )
     .mutation(async ({ input: { recentMessages, recentOpportunities } }) => {
-      const transcript = recentMessages.slice(0, -1)
-      const mostRecentMessage = recentMessages[recentMessages.length - 1]
-
-      if (!mostRecentMessage) {
-        return { opportunities: [] }
-      }
-
       const messages = [
         {
           role: "system" as const,
@@ -70,53 +67,62 @@ export const appRouter = t.router({
             ${recentOpportunities.join("\n\n")}
             </context-opportunities-already-given>
 
-            <context-transcript>
-            ${transcript.join("\n\n")}
-            </context-transcript>
-
             Only return opportunities that are clearly identifiable and would genuinely help the conversation based on the most recent message.
             Do not repeat opportunities that have already been given.
             Do not ask questions.
             If no clear opportunities exist, return an empty array.
 					`),
         },
-        {
+        ...recentMessages.map((m) => ({
           role: "user" as const,
-          content: mostRecentMessage,
-        },
+          content: m,
+        })),
       ]
 
-      console.log("chat", messages)
+      console.log("chat", {
+        recentMessages,
+        recentOpportunities,
+      })
 
       const { object } = await generateObject<
         z.infer<typeof OpportunityInferenceSchema>
       >({
-        model: togetherai("moonshotai/Kimi-K2-Instruct"),
+        // model: togetherai("moonshotai/Kimi-K2-Instruct"),
+        // model: togetherai("Qwen/Qwen3-235B-A22B-Instruct-2507-tput"),
+        // model: openrouter("moonshotai/kimi-k2"),
+        model: openrouter("qwen/qwen3-235b-a22b-2507"),
         schema: OpportunityInferenceSchema,
         messages,
       })
 
-      const imageEnhancedOpps: typeof object.opportunities = []
+      console.log("-> Opportunities:", object.opportunities)
+
+      const imageEnhancedOpps: ((typeof object.opportunities)[number] & {
+        imageUrl?: string
+      })[] = []
       for (const opp of object.opportunities) {
         if (opp.type === "generative") {
-          const response = await together.images.create({
-            model: "black-forest-labs/FLUX.1-pro",
-            prompt: `${mostRecentMessage}\n\n${opp.content}`,
-            steps: 10,
-            n: 4,
-            response_format: "url",
-          })
+          console.log("-> Enhancing generative opportunity with an image...")
 
-          const firstResponse = response.data[0]
+          const output = (await replicate.run(
+            "black-forest-labs/flux-schnell",
+            {
+              input: { prompt: `${recentMessages[0]}\n\n${opp.content}` },
+            },
+          )) as { url: () => { href: string } }[]
 
-          if ("url" in firstResponse) {
-            const imageUrl = firstResponse.url
+          const firstResponse = output[0]
+
+          if (typeof firstResponse.url === "function") {
+            const imageUrl = firstResponse.url().href
+            console.log("-> image", imageUrl)
             imageEnhancedOpps.push({ ...opp, imageUrl })
             continue
           }
         }
         imageEnhancedOpps.push(opp)
       }
+      console.log("-> Return", imageEnhancedOpps.length)
 
       return {
         opportunities: imageEnhancedOpps.map((o) => ({
