@@ -6,7 +6,8 @@ type OpportunityBase = {
 
 export type QuestionOpportunity = {
   type: "question"
-  answer: string
+  shortAnswer: string
+  longAnswer: string
 } & OpportunityBase
 
 export type SearchOpportunity = {

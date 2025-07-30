@@ -134,10 +134,23 @@ export function OpportunityPanel({
 }
 
 function QuestionCard({ opportunity }: { opportunity: QuestionOpportunity }) {
+  const [showMore, setShowMore] = useState(false)
+
+  const handleShowMore = () => setShowMore(true)
+
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium text-slate-800">{opportunity.answer}</p>
-      <p className="text-xs text-slate-600 italic">{opportunity.trigger}</p>
+      <p className="text-sm text-slate-600 italic my-3">{opportunity.trigger}</p>
+      <p className="text-sm font-medium text-slate-800 mt-3 mb-5">
+        {opportunity.shortAnswer}
+      </p>
+      {showMore ? (
+        <p className="text-md font-medium text-slate-800 my-6 pl-4 border-l-2 border-amber-500">
+          {opportunity.longAnswer}
+        </p>
+      ) : (
+        <Button onClick={handleShowMore}>Show more</Button>
+      )}
       <p className="text-xs text-slate-500">
         {new Date(opportunity.timestamp).toLocaleTimeString()}
       </p>

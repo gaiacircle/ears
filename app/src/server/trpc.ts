@@ -29,7 +29,8 @@ const t = initTRPC.create()
 const QuestionOppSeedSchema = z.object({
   type: z.literal("question"),
   trigger: z.string(),
-  answer: z.string(),
+  shortAnswer: z.string(),
+  longAnswer: z.string(),
 })
 
 const SearchOppSeedSchema = z.object({
@@ -66,7 +67,7 @@ async function inferOpportunitySeeds(
             1. QUESTION/UNKNOWN
               - static, widely-known, or derivable → answer from memory.
               - examples: "Do you know…?" "What was the name…?"
-              - NOTE: content MUST be ≤12 words.
+              - NOTE: shortAnswer MUST be ≤12 words, while longAnswer can be 2-3 sentences.
             2. SEARCH RETRIEVAL
               - time-sensitive, live, or domain-specific → external lookup required.
               - examples: "I read somewhere…," "current price," "next flight", "next flight", "I heard on the news…"
@@ -135,9 +136,10 @@ export const appRouter = t.router({
               id,
               timestamp,
               trigger: seed.trigger,
-              answer: seed.answer,
+              shortAnswer: seed.shortAnswer,
+              longAnswer: seed.longAnswer,
             })
-            console.log(" -> question:", seed.answer)
+            console.log(" -> question:", seed.shortAnswer)
             break
           }
 

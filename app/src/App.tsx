@@ -27,7 +27,7 @@ interface ListenWorker extends Worker {
 function getOpportunityMainContent(o: Opportunity) {
   switch (o.type) {
     case "question":
-      return o.answer
+      return o.longAnswer
     case "search":
       return `${o.searchQuery}: ${o.answer}`
     case "generative":
