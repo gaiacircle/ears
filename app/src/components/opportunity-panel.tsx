@@ -1,46 +1,62 @@
 import { HelpCircle, ImageIcon, Search } from "lucide-react"
 
-import type { OpportunityCard } from "@/types/opportunity-card"
+import type {
+  Opportunity,
+  QuestionOpportunity,
+  SearchOpportunity,
+  GenerativeOpportunity,
+} from "@/server/opportunity"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useSmartAutoscroll } from "@/hooks/use-smart-autoscroll"
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "./ui/carousel"
 
-const getCardIcon = (type: string) => {
+const getCardIcon = (type: Opportunity["type"]) => {
+  // biome-ignore format: easy reading
   switch (type) {
-    case "question":
-      return <HelpCircle className="w-4 h-4" />
-    case "memory":
-      return <Search className="w-4 h-4" />
-    case "generative":
-      return <ImageIcon className="w-4 h-4" />
-    default:
-      return <HelpCircle className="w-4 h-4" />
+    case "question":   return <HelpCircle className="w-4 h-4" />
+    case "search":     return <Search className="w-4 h-4" />
+    case "generative": return <ImageIcon className="w-4 h-4" />
+    default:           return <HelpCircle className="w-4 h-4" />
   }
 }
 
-const getCardColor = (type: string) => {
+const getCardName = (type: Opportunity["type"]) => {
+  // biome-ignore format: easy reading
   switch (type) {
-    case "question":
-      return "bg-blue-50 border-blue-200"
-    case "memory":
-      return "bg-green-50 border-green-200"
-    case "generative":
-      return "bg-purple-50 border-purple-200"
-    default:
-      return "bg-gray-50 border-gray-200"
+    case "question":   return "Trivia"
+    case "search":     return "Search"
+    case "generative": return "Imagining"
+    default:           return "Unknown"
+  }
+}
+
+const getCardColor = (type: Opportunity["type"]) => {
+  // biome-ignore format: easy reading
+  switch (type) {
+    case "question":   return "bg-blue-50 border-blue-200"
+    case "search":     return "bg-green-50 border-green-200"
+    case "generative": return "bg-purple-50 border-purple-200"
+    default:           return "bg-gray-50 border-gray-200"
   }
 }
 
 interface OpportunityParams {
-  opportunityCards: OpportunityCard[]
+  opportunities: Opportunity[]
   dismissCard: (id: string) => void
 }
 
 export function OpportunityPanel({
-  opportunityCards,
+  opportunities,
   dismissCard,
 }: OpportunityParams) {
   const panelRef = useRef<HTMLDivElement>(null)
@@ -50,7 +66,7 @@ export function OpportunityPanel({
   // biome-ignore lint/correctness/useExhaustiveDependencies: any change to the transcript triggers scrollToEnd
   useEffect(() => {
     setTimeout(scrollToEnd, 100)
-  }, [opportunityCards])
+  }, [opportunities])
 
   /* Opportunity Cards Panel */
   return (
@@ -68,7 +84,7 @@ export function OpportunityPanel({
       </Card>
 
       <div className="space-y-4">
-        {opportunityCards.length === 0 ? (
+        {opportunities.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="p-6 text-center">
               <div className="text-slate-400 mb-2">
@@ -81,7 +97,7 @@ export function OpportunityPanel({
             </CardContent>
           </Card>
         ) : (
-          opportunityCards.map((card) => (
+          opportunities.map((card) => (
             <Card
               key={card.id}
               className={`mb-4 ${getCardColor(card.type)} transition-all duration-300 hover:shadow-md`}
@@ -91,7 +107,7 @@ export function OpportunityPanel({
                   <div className="flex items-center gap-2">
                     {getCardIcon(card.type)}
                     <Badge variant="secondary" className="text-xs capitalize">
-                      {card.type}
+                      {getCardName(card.type)}
                     </Badge>
                   </div>
                   <Button
@@ -106,26 +122,7 @@ export function OpportunityPanel({
               </CardHeader>
               <CardContent className="pt-0">
                 <div className="flex gap-4">
-                  <div className="flex-1/2 space-y-2">
-                    <p className="text-sm font-medium text-slate-800">
-                      {card.content}
-                    </p>
-                    <p className="text-xs text-slate-600 italic">
-                      {card.trigger}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(card.timestamp).toLocaleTimeString()}
-                    </p>
-                  </div>
-                  {card.imageUrl && (
-                    <div className="flex-1/2">
-                      <img
-                        className="object-cover rounded-md"
-                        src={card.imageUrl}
-                        alt="generated"
-                      />
-                    </div>
-                  )}
+                  <OpportunityCard opportunity={card} />
                 </div>
               </CardContent>
             </Card>
@@ -134,4 +131,108 @@ export function OpportunityPanel({
       </div>
     </div>
   )
+}
+
+function QuestionCard({ opportunity }: { opportunity: QuestionOpportunity }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium text-slate-800">{opportunity.answer}</p>
+      <p className="text-xs text-slate-600 italic">{opportunity.trigger}</p>
+      <p className="text-xs text-slate-500">
+        {new Date(opportunity.timestamp).toLocaleTimeString()}
+      </p>
+    </div>
+  )
+}
+
+function SearchCard({ opportunity }: { opportunity: SearchOpportunity }) {
+  return (
+    <>
+      <div className="w-full space-y-2">
+        <p className="text-sm font-medium text-slate-800">
+          {opportunity.answer}
+        </p>
+        <p className="text-xs text-slate-600 italic">
+          {opportunity.searchQuery}
+        </p>
+        <div className="flex flex-col gap-6 py-4 px-10">
+          <Carousel>
+            <CarouselPrevious />
+            <CarouselContent>
+              {opportunity.results.map((r) => (
+                <CarouselItem className="max-w-2/3" key={r.url}>
+                  <div className="w-full border rounded-2xl p-3 text-sm">
+                    <a href={r.url} target="_blank" rel="noreferrer">
+                      {r.title}
+                    </a>
+                  </div>
+                </CarouselItem>
+              ))}
+            </CarouselContent>
+            <CarouselNext />
+          </Carousel>
+
+          <Carousel>
+            <CarouselPrevious />
+            <CarouselContent>
+              {opportunity.images.map((i) => (
+                <CarouselItem
+                  className="max-w-1/3 flex items-center"
+                  key={i.url}
+                >
+                  <img
+                    key={i.url}
+                    src={i.url}
+                    alt={i.description}
+                    className="w-full"
+                  />
+                </CarouselItem>
+              ))}
+            </CarouselContent>
+            <CarouselNext />
+          </Carousel>
+        </div>
+        <p className="text-xs text-slate-500">
+          {new Date(opportunity.timestamp).toLocaleTimeString()}
+        </p>
+      </div>
+    </>
+  )
+}
+
+function GenerativeCard({
+  opportunity,
+}: { opportunity: GenerativeOpportunity }) {
+  return (
+    <>
+      <div className="flex-1/2 space-y-2">
+        <p className="text-sm font-medium text-slate-800">
+          {opportunity.imagePrompt}
+        </p>
+        <p className="text-xs text-slate-600 italic">{opportunity.trigger}</p>
+        <p className="text-xs text-slate-500">
+          {new Date(opportunity.timestamp).toLocaleTimeString()}
+        </p>
+      </div>
+      <div className="flex-1/2">
+        <img
+          className="object-cover rounded-md"
+          src={opportunity.imageUrl}
+          alt="generated"
+        />
+      </div>
+    </>
+  )
+}
+
+function OpportunityCard({ opportunity }: { opportunity: Opportunity }) {
+  switch (opportunity.type) {
+    case "question":
+      return <QuestionCard opportunity={opportunity} />
+    case "search":
+      return <SearchCard opportunity={opportunity} />
+    case "generative":
+      return <GenerativeCard opportunity={opportunity} />
+  }
+  throw new Error("Unknown card type")
 }

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { uuidv7 as uuid } from "uuidv7"
 
 import type { FromWorkerMessage, ToWorkerMessage } from "@/listen-worker/types"
-import type { OpportunityCard } from "@/types/opportunity-card"
+import type { Opportunity } from "@/server/opportunity"
 import type { TranscriptEntry } from "@/types/transcript-entry"
 
 import { SpeechIndicator } from "@/components/speech-indicator"
@@ -24,6 +24,17 @@ interface ListenWorker extends Worker {
   ): void
 }
 
+function getOpportunityMainContent(o: Opportunity) {
+  switch (o.type) {
+    case "question":
+      return o.answer
+    case "search":
+      return `${o.searchQuery}: ${o.answer}`
+    case "generative":
+      return o.imagePrompt
+  }
+}
+
 export default function App() {
   const [callStartTime, setCallStartTime] = useState<number | null>(null)
   const [callStarted, setCallStarted] = useState(false)
@@ -32,9 +43,7 @@ export default function App() {
   const [listeningScale, setListeningScale] = useState(1)
 
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([])
-  const [opportunityCards, setOpportunityCards] = useState<OpportunityCard[]>(
-    [],
-  )
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([])
 
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -45,28 +54,6 @@ export default function App() {
 
   const chatMutation = trpc.chat.useMutation()
 
-  useEffect(() => {
-    // window.onkeydown((ev) => {})
-    const action = (ev: KeyboardEvent) => {
-      if (ev.key === "y" && (ev.metaKey || ev.ctrlKey)) {
-        const id = uuid()
-        setOpportunityCards((cards) => [
-          ...cards,
-          {
-            id,
-            timestamp: Date.now(),
-            content: uuid(),
-            explanation: id,
-            trigger: "key",
-            type: "question",
-          },
-        ])
-      }
-    }
-    window.addEventListener("keydown", action)
-    return () => window.removeEventListener("keydown", action)
-  }, [])
-
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
     const recentMessages = transcript.slice(-3).map((e) => e.text)
@@ -75,13 +62,15 @@ export default function App() {
       chatMutation.mutate(
         {
           recentMessages,
-          recentOpportunities: opportunityCards.slice(-3).map((o) => o.content),
+          recentOpportunities: opportunities
+            .slice(-3)
+            .map((o) => getOpportunityMainContent(o)),
         },
         {
           onSuccess(data, variables, context) {
             const opportunities = data.opportunities
 
-            setOpportunityCards((cards) => [...cards, ...opportunities])
+            setOpportunities((cards) => [...cards, ...opportunities])
           },
         },
       )
@@ -294,7 +283,7 @@ export default function App() {
         </div>
 
         <OpportunityPanel
-          opportunityCards={opportunityCards}
+          opportunities={opportunities}
           dismissCard={(...args) => {
             console.log("dismiss", args)
           }}
