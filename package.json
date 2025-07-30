@@ -19,5 +19,10 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4"
+	},
+	"pnpm": {
+		"patchedDependencies": {
+			"@yrobot/auto-scroll": "patches/@yrobot__auto-scroll.patch"
+		}
 	}
 }

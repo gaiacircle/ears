@@ -214,7 +214,6 @@ export const appRouter = t.router({
                   seed.imagePrompt,
                   imageUrl,
                 )
-                continue
               }
             }
             break

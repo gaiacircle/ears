@@ -1,4 +1,5 @@
 import { HelpCircle, ImageIcon, Search } from "lucide-react"
+import autoScroll from "@yrobot/auto-scroll"
 
 import type {
   Opportunity,
@@ -10,8 +11,7 @@ import type {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { useCallback, useEffect, useRef, useState } from "react"
-import { useSmartAutoscroll } from "@/hooks/use-smart-autoscroll"
+import { useEffect, useRef, useState } from "react"
 import {
   Carousel,
   CarouselContent,
@@ -61,12 +61,11 @@ export function OpportunityPanel({
 }: OpportunityParams) {
   const panelRef = useRef<HTMLDivElement>(null)
 
-  const scrollToEnd = useSmartAutoscroll(panelRef)
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: any change to the transcript triggers scrollToEnd
   useEffect(() => {
-    setTimeout(scrollToEnd, 100)
-  }, [opportunities])
+    const container = panelRef.current
+    if (!container) return
+    return autoScroll({ container })
+  }, [])
 
   /* Opportunity Cards Panel */
   return (
@@ -140,7 +139,9 @@ function QuestionCard({ opportunity }: { opportunity: QuestionOpportunity }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-sm text-slate-600 italic my-3">{opportunity.trigger}</p>
+      <p className="text-sm text-slate-600 italic my-3">
+        {opportunity.trigger}
+      </p>
       <p className="text-sm font-medium text-slate-800 mt-3 mb-5">
         {opportunity.shortAnswer}
       </p>
@@ -151,7 +152,7 @@ function QuestionCard({ opportunity }: { opportunity: QuestionOpportunity }) {
       ) : (
         <Button onClick={handleShowMore}>Show more</Button>
       )}
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-500 mt-3">
         {new Date(opportunity.timestamp).toLocaleTimeString()}
       </p>
     </div>
@@ -248,4 +249,43 @@ function OpportunityCard({ opportunity }: { opportunity: Opportunity }) {
       return <GenerativeCard opportunity={opportunity} />
   }
   throw new Error("Unknown card type")
+}
+
+function OpportunityCardWithResize({
+  opportunity,
+  onResize,
+}: { opportunity: Opportunity; onResize: () => void }) {
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let height = 0
+    const observer = new ResizeObserver(() => {
+      console.log(
+        cardRef.current,
+        cardRef.current?.clientWidth,
+        cardRef.current?.clientHeight,
+      )
+      const currentHeight = cardRef.current?.clientHeight
+      if (currentHeight != null) {
+        height = currentHeight
+        setTimeout(onResize, 100)
+      }
+    })
+
+    if (cardRef.current) {
+      observer.observe(cardRef.current)
+    }
+
+    return () => {
+      if (cardRef.current) {
+        observer.unobserve(cardRef.current)
+      }
+    }
+  }, [onResize])
+
+  return (
+    <div ref={cardRef}>
+      <OpportunityCard opportunity={opportunity} />
+    </div>
+  )
 }

@@ -1,0 +1,32 @@
+diff --git a/build/index.d.ts b/build/index.d.ts
+index 99c3fa30909d593cff0ad10685e2a3b5450e4f4b..41d359ab7fa1771f7a0792cf4b01ac3f53eb7ff0 100644
+--- a/build/index.d.ts
++++ b/build/index.d.ts
+@@ -34,7 +34,8 @@ export declare const escapeWhenUpPlugin: Plugin<{
+  * @example autoScroll({ selector: "#scroll-container-id", plugins: [escapeWhenUpPlugin()] })
+  */
+ export default function autoScroll({ selector, throttleTime, plugins, offset, }: {
+-    selector: string;
++    selector?: string;
++    container?: HTMLElement;
+     throttleTime?: number;
+     plugins?: ReturnType<Plugin>[];
+     offset?: number;
+diff --git a/build/index.es.js b/build/index.es.js
+index bc2617b1ae63073ba968ece92e57df0b049126c1..82bca68b9a08e637b0c77dcd7da2a1338462c766 100644
+--- a/build/index.es.js
++++ b/build/index.es.js
+@@ -28,11 +28,12 @@ const m = (a, l) => {
+ };
+ function v({
+   selector: a,
++  container: ct,
+   throttleTime: l = 100,
+   plugins: o = [],
+   offset: r = 0
+ }) {
+-  const t = document.querySelector(a);
++  const t = ct ?? document.querySelector(a);
+   if (t === null)
+     throw new Error(`Element not found with selector [${a}]`);
+   const f = o.map((e) => {

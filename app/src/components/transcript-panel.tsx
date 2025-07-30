@@ -1,6 +1,7 @@
-import { useSmartAutoscroll } from "@/hooks/use-smart-autoscroll"
+import { useEffect, useRef } from "react"
+import autoScroll from "@yrobot/auto-scroll"
+
 import type { TranscriptEntry } from "@/types/transcript-entry"
-import { type RefObject, useEffect, useRef } from "react"
 
 interface TranscriptPanelProps {
   transcript: TranscriptEntry[]
@@ -9,10 +10,11 @@ interface TranscriptPanelProps {
 export function TranscriptPanel({ transcript }: TranscriptPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null)
 
-  const scrollToEnd = useSmartAutoscroll(panelRef)
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: any change to the transcript triggers scrollToEnd
-  useEffect(scrollToEnd, [transcript])
+  useEffect(() => {
+    const container = panelRef.current
+    if (!container) return
+    return autoScroll({ container })
+  }, [])
 
   return (
     <div

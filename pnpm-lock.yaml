@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@yrobot/auto-scroll':
+    hash: 4f2mn2gfipnqxmqzl5d7volvoi
+    path: patches/@yrobot__auto-scroll.patch
+
 importers:
 
   .:
@@ -122,6 +127,9 @@ importers:
       '@trpc/server':
         specifier: ^11.4.3
         version: 11.4.3(typescript@5.8.3)
+      '@yrobot/auto-scroll':
+        specifier: ^3.0.1
+        version: 3.0.1(patch_hash=4f2mn2gfipnqxmqzl5d7volvoi)
       ai:
         specifier: ^4.3.19
         version: 4.3.19(react@19.1.0)(zod@3.25.76)
@@ -2670,6 +2678,9 @@ packages:
     resolution: {integrity: sha512-Yk2gyiQvsoee/jXP9q0jMl412Nx27LYu+P1O4DHuxeutL9qtd6t3Ktuv+zZmOzFc6gMQ7+/6mQFPo3/LlXZM3w==}
     engines: {node: '>=18.12.0'}
     hasBin: true
+
+  '@yrobot/auto-scroll@3.0.1':
+    resolution: {integrity: sha512-7sOqY1tPjrCzuEHvzZs9IWOzW/jTfQz60PWqsBm04cqsuUNVkFT9RW1TsQQOK0GKEt49mZvK1ArxoPaghWW3Ew==}
 
   '@zkochan/boxen@5.1.2':
     resolution: {integrity: sha512-MRUN24GOMTa14zkZ4Jd1BPmlagbk10+C6gegE5FgxzTVqiYMcm3KD+2qJs6OmlpEhqUKmm4pu/oTdn0KcMqbXg==}
@@ -8016,6 +8027,8 @@ snapshots:
       tslib: 2.8.1
     transitivePeerDependencies:
       - typanion
+
+  '@yrobot/auto-scroll@3.0.1(patch_hash=4f2mn2gfipnqxmqzl5d7volvoi)': {}
 
   '@zkochan/boxen@5.1.2':
     dependencies:
